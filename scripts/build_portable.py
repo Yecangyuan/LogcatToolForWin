@@ -12,11 +12,17 @@ def build_portable(
     readme_path: Path,
     output_root: Path,
 ) -> Path:
+    if output_root.resolve() == dist_root.resolve():
+        raise ValueError("output_root must not overlap the built app directory")
+
     app_dir = dist_root / "logcat-tool-for-win"
     if not app_dir.exists():
         raise FileNotFoundError(f"Missing built app directory: {app_dir}")
     if not platform_tools_dir.exists():
         raise FileNotFoundError(f"Missing platform-tools directory: {platform_tools_dir}")
+    adb_exe = platform_tools_dir / "adb.exe"
+    if not adb_exe.exists():
+        raise FileNotFoundError(f"Missing adb executable: {adb_exe}")
     if not readme_path.exists():
         raise FileNotFoundError(f"Missing README file: {readme_path}")
 
@@ -59,4 +65,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

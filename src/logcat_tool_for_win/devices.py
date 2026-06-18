@@ -7,10 +7,17 @@ def parse_devices_output(output: str) -> list[DeviceInfo]:
     devices: list[DeviceInfo] = []
     for raw_line in output.splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("List of devices attached"):
+        if (
+            not line
+            or line.startswith("* daemon ")
+            or line.startswith("List of devices attached")
+        ):
             continue
 
         parts = line.split()
+        if len(parts) < 2:
+            continue
+
         serial = parts[0]
         state = parts[1]
         attrs: dict[str, str] = {}

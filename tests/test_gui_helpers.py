@@ -140,6 +140,19 @@ def test_stop_stream_surfaces_stop_failures_instead_of_claiming_idle() -> None:
     assert "stop failed" in controller.status.last_error
 
 
+def test_stop_active_session_retains_failed_session_ownership() -> None:
+    controller = make_controller()
+    original_events = controller.events
+    failing_session = FailingSession()
+    controller.session = failing_session
+
+    error = gui.LogcatToolGUI._stop_active_session(controller, manual=True)
+
+    assert error == "stop failed"
+    assert controller.session is failing_session
+    assert controller.events is original_events
+
+
 def test_start_stream_uses_unfiltered_capture_command_for_raw_export(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")

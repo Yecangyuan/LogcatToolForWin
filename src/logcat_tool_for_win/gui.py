@@ -779,8 +779,6 @@ class LogcatToolGUI:
     def _stop_active_session(self, manual: bool) -> str | None:
         self.manual_stop = manual
         current_session = self.session
-        self.session = None
-        self.events = queue.Queue()
         if current_session is None:
             return None
 
@@ -789,7 +787,7 @@ class LogcatToolGUI:
             current_session.stop()
         except Exception as exc:
             failures.append(str(exc))
-        if self.session is None:
+        else:
             try:
                 current_session.join()
             except Exception as exc:
@@ -797,6 +795,9 @@ class LogcatToolGUI:
 
         if failures:
             return "; ".join(failures)
+        if self.session is current_session:
+            self.session = None
+            self.events = queue.Queue()
         return None
 
     def _discard_pending_events(self) -> None:

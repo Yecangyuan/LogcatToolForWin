@@ -1,1 +1,9 @@
-.worktrees/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+artifacts/
+src/logcat_tool_for_win/resources/platform-tools/*
+!src/logcat_tool_for_win/resources/platform-tools/.gitkeep

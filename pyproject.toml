@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logcat-tool-for-win"
+version = "0.1.0"
+description = "Windows GUI Android logcat viewer with bundled adb."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Simley"}]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.5.0",
+  "build>=1.2.2",
+  "pyinstaller>=6.10",
+]
+
+[project.scripts]
+logcat-tool-for-win = "logcat_tool_for_win.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

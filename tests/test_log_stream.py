@@ -1,5 +1,6 @@
 import io
 import queue
+import threading
 
 from logcat_tool_for_win.log_stream import LogcatSession, parse_threadtime_line
 
@@ -22,6 +23,65 @@ class FakePopen:
         return self.returncode
 
 
+class RaisingFactory:
+    def __call__(self, *args, **kwargs):
+        raise RuntimeError("launch failed")
+
+
+class BlockingStdout:
+    def __init__(self, release_stderr: threading.Event) -> None:
+        self.release_stderr = release_stderr
+        self.state = 0
+
+    def __iter__(self) -> "BlockingStdout":
+        return self
+
+    def __next__(self) -> str:
+        if self.state == 0:
+            self.state = 1
+            return "06-18 12:00:00.000  1234  1235 I MyApp: boot complete\n"
+        if self.state == 1:
+            if not self.release_stderr.wait(timeout=0.2):
+                raise RuntimeError("stderr was not drained while stdout was active")
+            self.state = 2
+            return "06-18 12:00:01.000  1234  1235 I MyApp: still running\n"
+        raise StopIteration
+
+
+class BlockingPopen:
+    def __init__(self) -> None:
+        self.release_stderr = threading.Event()
+        self.stdout = BlockingStdout(self.release_stderr)
+        self.stderr = io.StringIO("device offline")
+        self.returncode = 0
+
+    def terminate(self) -> None:
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
+class DeferredStderrPopen:
+    def __init__(self) -> None:
+        self.release_stderr = threading.Event()
+        self.stdout = BlockingStdout(self.release_stderr)
+        self.stderr = self
+        self.returncode = 0
+        self.stderr_read = False
+
+    def read(self) -> str:
+        self.stderr_read = True
+        self.release_stderr.set()
+        return "device offline"
+
+    def terminate(self) -> None:
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
 def test_parse_threadtime_line_extracts_fields() -> None:
     entry = parse_threadtime_line("06-18 12:00:00.000  1234  1235 E MyApp: crash")
     assert entry.level == "E"
@@ -36,6 +96,36 @@ def test_parse_threadtime_line_returns_raw_fallback_for_unmatched_lines() -> Non
     assert entry.tag == "raw"
     assert entry.message == "not a log line"
     assert entry.raw_line == "not a log line"
+
+
+def test_session_emits_no_started_event_when_launch_fails() -> None:
+    events: queue.Queue = queue.Queue()
+    session = LogcatSession(["adb", "logcat"], events, RaisingFactory())
+
+    try:
+        session.start()
+    except RuntimeError:
+        pass
+
+    assert events.empty()
+
+
+def test_session_drains_stderr_while_stdout_is_still_active() -> None:
+    events: queue.Queue = queue.Queue()
+    session = LogcatSession(["adb", "logcat"], events, lambda *args, **kwargs: DeferredStderrPopen())
+
+    session.start()
+    session.join()
+
+    kinds = []
+    messages = []
+    while not events.empty():
+        event = events.get()
+        kinds.append(event.kind)
+        messages.append(event.message)
+
+    assert kinds == ["started", "line", "line", "stderr", "stopped"]
+    assert messages[3] == "device offline"
 
 
 def test_session_emits_started_line_and_stderr_events() -> None:

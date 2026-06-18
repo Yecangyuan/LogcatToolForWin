@@ -48,7 +48,6 @@ class LogcatSession:
         self.worker: threading.Thread | None = None
 
     def start(self) -> None:
-        self.events.put(StreamEvent(kind="started"))
         self.process = self.popen_factory(
             self.command,
             stdout=subprocess.PIPE,
@@ -56,21 +55,32 @@ class LogcatSession:
             text=True,
             bufsize=1,
         )
+        self.events.put(StreamEvent(kind="started"))
         self.worker = threading.Thread(target=self._pump, daemon=True)
         self.worker.start()
 
     def _pump(self) -> None:
         assert self.process is not None
         assert self.process.stdout is not None
+        stderr_text: list[str] = []
+
+        def _drain_stderr() -> None:
+            stderr = self.process.stderr
+            if stderr is None:
+                return
+            text = stderr.read()
+            if text:
+                stderr_text.append(text.rstrip("\n"))
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
         for line in self.process.stdout:
             self.events.put(StreamEvent(kind="line", entry=parse_threadtime_line(line)))
 
-        if self.process.stderr is not None:
-            stderr_text = self.process.stderr.read()
-            if stderr_text:
-                self.events.put(
-                    StreamEvent(kind="stderr", message=stderr_text.rstrip("\n"))
-                )
+        stderr_thread.join()
+        if stderr_text:
+            self.events.put(StreamEvent(kind="stderr", message=stderr_text[0]))
 
         self.events.put(StreamEvent(kind="stopped"))
 

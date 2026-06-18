@@ -8,7 +8,7 @@ from pathlib import Path
 
 from logcat_tool_for_win.devices import parse_devices_output
 from logcat_tool_for_win.filters import build_logcat_filter_spec
-from logcat_tool_for_win.models import DeviceInfo
+from logcat_tool_for_win.models import DeviceInfo, FilterState
 
 
 class ADBCommandError(RuntimeError):
@@ -59,8 +59,9 @@ def list_devices() -> list[DeviceInfo]:
     return parse_devices_output(result.stdout)
 
 
-def connect_device(target: str) -> subprocess.CompletedProcess[str]:
-    return run_adb(["connect", validate_tcp_target(target)])
+def connect_device(target: str) -> str:
+    result = run_adb(["connect", validate_tcp_target(target)])
+    return result.stdout
 
 
 def restart_server() -> None:
@@ -72,11 +73,7 @@ def clear_logcat(serial: str) -> subprocess.CompletedProcess[str]:
     return run_adb(["-s", serial, "logcat", "-c"])
 
 
-def build_logcat_command(
-    serial: str,
-    minimum_level: str = "I",
-    tag_filters: tuple[str, ...] = (),
-) -> list[str]:
+def build_logcat_command(serial: str, filter_state: FilterState) -> list[str]:
     return [
         str(resolve_adb_path()),
         "-s",
@@ -84,5 +81,5 @@ def build_logcat_command(
         "logcat",
         "-v",
         "threadtime",
-        *build_logcat_filter_spec(minimum_level, tag_filters),
+        *build_logcat_filter_spec(filter_state.minimum_level, filter_state.tag_filters),
     ]

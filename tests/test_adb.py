@@ -1,9 +1,18 @@
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from logcat_tool_for_win.adb import build_logcat_command, resolve_adb_path, validate_tcp_target
+from logcat_tool_for_win.adb import (
+    ADBCommandError,
+    build_logcat_command,
+    connect_device,
+    resolve_adb_path,
+    run_adb,
+    validate_tcp_target,
+)
 from logcat_tool_for_win.filters import build_logcat_filter_spec
+from logcat_tool_for_win.models import FilterState
 
 
 def test_validate_tcp_target_accepts_ipv4_target() -> None:
@@ -36,9 +45,40 @@ def test_build_logcat_command_uses_resolved_adb_path_and_filter_spec(
     adb_path = Path("/opt/android/platform-tools/adb.exe")
     monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: adb_path)
 
-    command = build_logcat_command("SERIAL", "I", ("MyApp",))
+    state = FilterState(minimum_level="I", tag_filters=("MyApp",))
+    command = build_logcat_command("SERIAL", state)
 
     assert command[:4] == [str(adb_path), "-s", "SERIAL", "logcat"]
     assert command[4] == "-v"
     assert command[5] == "threadtime"
     assert command[6:] == build_logcat_filter_spec("I", ("MyApp",))
+
+
+def test_connect_device_returns_stdout_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    assert connect_device("192.168.0.8:5555") == "connected to 192.168.0.8:5555\n"
+
+
+def test_run_adb_raises_adb_command_error_on_non_zero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "version"],
+        returncode=1,
+        stdout="",
+        stderr="failed",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", lambda *args, **kwargs: completed)
+
+    with pytest.raises(ADBCommandError, match="failed"):
+        run_adb(["version"])

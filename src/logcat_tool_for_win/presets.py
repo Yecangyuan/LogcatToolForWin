@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from logcat_tool_for_win.models import FilterState, HighlightRule
 
@@ -16,14 +17,73 @@ def _filters_to_payload(filters: FilterState) -> dict[str, object]:
     }
 
 
-def _filters_from_payload(payload: dict[str, object]) -> FilterState:
+def _coerce_bool(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    return default
+
+
+def _filters_from_payload(payload: object) -> FilterState:
+    if not isinstance(payload, dict):
+        return FilterState()
+
+    raw_tags = payload.get("tag_filters", [])
+    tag_filters: tuple[str, ...] = ()
+    if isinstance(raw_tags, (list, tuple)):
+        tag_filters = tuple(str(item) for item in raw_tags if item is not None)
+
+    minimum_level = payload.get("minimum_level", "V")
+    keyword = payload.get("keyword", "")
     return FilterState(
-        minimum_level=str(payload.get("minimum_level", "V")),
-        tag_filters=tuple(payload.get("tag_filters", [])),
-        keyword=str(payload.get("keyword", "")),
-        match_only=bool(payload.get("match_only", False)),
-        auto_scroll=bool(payload.get("auto_scroll", True)),
+        minimum_level=minimum_level if isinstance(minimum_level, str) and minimum_level else "V",
+        tag_filters=tag_filters,
+        keyword=keyword if isinstance(keyword, str) else "",
+        match_only=_coerce_bool(payload.get("match_only", False), False),
+        auto_scroll=_coerce_bool(payload.get("auto_scroll", True), True),
     )
+
+
+def _highlight_rules_from_payload(payload: object) -> list[HighlightRule]:
+    if not isinstance(payload, list):
+        return []
+
+    rules: list[HighlightRule] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+
+        name = item.get("name")
+        pattern = item.get("pattern")
+        foreground = item.get("foreground")
+        background = item.get("background", "")
+
+        if not isinstance(name, str) or not name:
+            continue
+        if not isinstance(pattern, str) or not pattern:
+            continue
+        if not isinstance(foreground, str) or not foreground:
+            continue
+        if not isinstance(background, str):
+            background = ""
+
+        rules.append(
+            HighlightRule(
+                name=name,
+                pattern=pattern,
+                foreground=foreground,
+                background=background,
+                case_sensitive=_coerce_bool(item.get("case_sensitive", False), False),
+            )
+        )
+
+    return rules
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Expected JSON object payload.")
+    return payload
 
 
 def save_preset(path: Path, name: str, filters: FilterState) -> None:
@@ -37,7 +97,10 @@ def save_preset(path: Path, name: str, filters: FilterState) -> None:
 def load_presets(path: Path) -> dict[str, FilterState]:
     if not path.exists():
         return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = _read_json_object(path)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return {}
     return {name: _filters_from_payload(state) for name, state in payload.items()}
 
 
@@ -69,8 +132,14 @@ def load_state(path: Path) -> tuple[FilterState, list[HighlightRule], str]:
     if not path.exists():
         return FilterState(), [], ""
 
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = _read_json_object(path)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return FilterState(), [], ""
+
     filters = _filters_from_payload(payload.get("filters", {}))
-    rules = [HighlightRule(**item) for item in payload.get("highlight_rules", [])]
+    rules = _highlight_rules_from_payload(payload.get("highlight_rules", []))
     recent_target = payload.get("recent_target", "")
+    if not isinstance(recent_target, str):
+        recent_target = ""
     return filters, rules, recent_target

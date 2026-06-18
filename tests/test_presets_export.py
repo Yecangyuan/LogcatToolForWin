@@ -1,4 +1,7 @@
+import json
 from pathlib import Path
+
+import pytest
 
 from logcat_tool_for_win.export import export_lines
 from logcat_tool_for_win.models import FilterState, HighlightRule
@@ -40,7 +43,57 @@ def test_save_and_load_named_presets_round_trip(tmp_path: Path) -> None:
     assert presets["Warnings"].keyword == "slow"
 
 
-def test_export_lines_writes_text_file(tmp_path: Path) -> None:
-    output = tmp_path / "logs.txt"
+def test_load_presets_returns_empty_dict_for_bad_payload(tmp_path: Path) -> None:
+    presets_file = tmp_path / "presets.json"
+    presets_file.write_text(json.dumps(["invalid"]), encoding="utf-8")
+
+    assert load_presets(presets_file) == {}
+
+
+def test_load_state_returns_defaults_for_bad_payload(tmp_path: Path) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text("{not-json", encoding="utf-8")
+
+    loaded_filters, loaded_rules, recent_target = load_state(state_file)
+
+    assert loaded_filters == FilterState()
+    assert loaded_rules == []
+    assert recent_target == ""
+
+
+def test_load_state_skips_invalid_highlight_rules(tmp_path: Path) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "filters": {"minimum_level": "I", "match_only": "false"},
+                "highlight_rules": [
+                    {"name": "Good", "pattern": "ok", "foreground": "#00ff00"},
+                    {"name": "MissingForeground", "pattern": "oops"},
+                    "bad-entry",
+                ],
+                "recent_target": 1234,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded_filters, loaded_rules, recent_target = load_state(state_file)
+
+    assert loaded_filters.minimum_level == "I"
+    assert loaded_filters.match_only is False
+    assert [rule.name for rule in loaded_rules] == ["Good"]
+    assert recent_target == ""
+
+
+def test_export_lines_writes_text_file_and_creates_parent_directories(tmp_path: Path) -> None:
+    output = tmp_path / "exports" / "device-a" / "logs.txt"
     export_lines(output, ["line one", "line two"])
     assert output.read_text(encoding="utf-8").splitlines() == ["line one", "line two"]
+
+
+def test_export_lines_rejects_empty_exports(tmp_path: Path) -> None:
+    output = tmp_path / "logs.txt"
+
+    with pytest.raises(ValueError, match="No log lines available to export."):
+        export_lines(output, [])

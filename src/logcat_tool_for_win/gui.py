@@ -56,6 +56,7 @@ MUTED = "#94A3B8"
 ACCENT = "#22C55E"
 WARN = "#FB923C"
 ERROR = "#F87171"
+HIGHLIGHT_TAG_PREFIX = "highlight::"
 
 
 def build_summary_text(total_lines: int, visible_lines: int, stream_state: str) -> str:
@@ -69,6 +70,10 @@ def build_highlight_rules(raw: str) -> list[HighlightRule]:
         if pattern:
             rules.append(HighlightRule(name=pattern, pattern=pattern, foreground=WARN))
     return rules
+
+
+def build_highlight_text_tag(rule_name: str) -> str:
+    return f"{HIGHLIGHT_TAG_PREFIX}{rule_name}"
 
 
 def format_status_text(status: AppStatus) -> str:
@@ -106,6 +111,7 @@ class LogcatToolGUI:
         self.named_presets = load_presets(self.presets_file)
         self.status = AppStatus()
         self.manual_stop = True
+        self.reconnect_target_serial = ""
         self._filter_trace_ids: list[tuple[tk.Variable, str]] = []
 
         self.device_var = tk.StringVar()
@@ -427,6 +433,7 @@ class LogcatToolGUI:
 
     def refresh_devices(self) -> None:
         current_label = self.device_var.get()
+        preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
         try:
             self.devices = list_devices()
             labels = [device_label(device) for device in self.devices]
@@ -439,10 +446,16 @@ class LogcatToolGUI:
                 self.device_var.set("")
             self.status.adb_ready = True
             self.status.last_error = ""
-            self._sync_selected_device()
+            if not preserve_stream_target:
+                self._sync_selected_device()
         except Exception as exc:
+            self.devices = []
+            self.device_combo["values"] = ()
+            self.device_var.set("")
             self.status.adb_ready = False
             self.status.last_error = str(exc)
+            if not preserve_stream_target:
+                self.status.active_device_serial = ""
         self._update_status()
 
     def connect_tcp(self) -> None:
@@ -493,19 +506,30 @@ class LogcatToolGUI:
             )
             return
 
-        self._stop_active_session(manual=True)
+        stop_error = self._stop_active_session(manual=True)
+        if stop_error:
+            self.status.stream_state = "failed"
+            self.status.last_error = stop_error
+            messagebox.showerror("Stop Failed", stop_error)
+            self._update_status()
+            return
         self.filters = self._current_filters()
         self.highlight_rules = self._current_highlight_rules()
         retrying = self.status.stream_state == "reconnecting"
         self.manual_stop = False
         self.status.active_device_serial = device.serial
+        self.reconnect_target_serial = device.serial
         self.status.stream_state = "streaming"
         self.status.last_error = ""
         if not retrying:
             self.status.reconnect_attempt = 0
 
         try:
-            self.session = LogcatSession(build_logcat_command(device.serial, self.filters), self.events)
+            self.events = queue.Queue()
+            self.session = LogcatSession(
+                build_logcat_command(device.serial, FilterState()),
+                self.events,
+            )
             self.session.start()
         except Exception as exc:
             self.session = None
@@ -516,11 +540,18 @@ class LogcatToolGUI:
         self._update_status()
 
     def stop_stream(self) -> None:
-        self._stop_active_session(manual=True)
+        stop_error = self._stop_active_session(manual=True)
+        if stop_error:
+            self.status.stream_state = "failed"
+            self.status.last_error = stop_error
+            self.status.queue_depth = 0
+            self._update_status()
+            return
         self.status.stream_state = "idle"
         self.status.reconnect_attempt = 0
         self.status.queue_depth = 0
         self.status.last_error = ""
+        self.reconnect_target_serial = ""
         self._update_status()
 
     def clear_view(self) -> None:
@@ -625,6 +656,7 @@ class LogcatToolGUI:
             self._update_status()
             return
 
+        self.reconnect_target_serial = self.reconnect_target_serial or self.status.active_device_serial
         self.status.reconnect_attempt += 1
         self.status.stream_state = "reconnecting"
         if not self.status.last_error:
@@ -633,12 +665,13 @@ class LogcatToolGUI:
         self.root.after(RECONNECT_DELAY_MS, self._retry_stream)
 
     def _retry_stream(self) -> None:
-        if self.manual_stop or not self.status.active_device_serial:
+        target_serial = getattr(self, "reconnect_target_serial", "") or self.status.active_device_serial
+        if self.manual_stop or not target_serial:
             return
 
         self.refresh_devices()
         for device in self.devices:
-            if device.serial == self.status.active_device_serial and device.state == "device":
+            if device.serial == target_serial and device.state == "device":
                 self.device_var.set(device_label(device))
                 self.start_stream()
                 return
@@ -656,12 +689,16 @@ class LogcatToolGUI:
                 break
 
             if event.kind == "line" and event.entry is not None:
+                if self.manual_stop or self.status.stream_state != "streaming":
+                    continue
                 updated = True
                 if self.status.reconnect_attempt:
                     self.status.reconnect_attempt = 0
                     self.status.last_error = ""
                 self._append_entry(event.entry)
             elif event.kind == "stderr":
+                if self.manual_stop or self.status.stream_state not in {"streaming", "reconnecting"}:
+                    continue
                 self.status.last_error = event.message
             elif event.kind == "stopped":
                 self.session = None
@@ -716,12 +753,13 @@ class LogcatToolGUI:
                 rule = rule_map.get(rule_name)
                 if rule is None:
                     continue
+                tag_name = build_highlight_text_tag(rule_name)
                 self.text.tag_config(
-                    rule_name,
+                    tag_name,
                     foreground=rule.foreground,
                     background=rule.background or "",
                 )
-                self.text.tag_add(rule_name, line_start, line_end)
+                self.text.tag_add(tag_name, line_start, line_end)
 
         self.text.configure(state=tk.DISABLED)
         self.summary_var.set(
@@ -738,21 +776,28 @@ class LogcatToolGUI:
                 self.status.active_device_serial = ""
         self._update_status()
 
-    def _stop_active_session(self, manual: bool) -> None:
+    def _stop_active_session(self, manual: bool) -> str | None:
         self.manual_stop = manual
-        if self.session is None:
-            return
-
-        try:
-            self.session.stop()
-        except Exception:
-            pass
-        try:
-            self.session.join()
-        except Exception:
-            pass
+        current_session = self.session
         self.session = None
-        self._discard_pending_events()
+        self.events = queue.Queue()
+        if current_session is None:
+            return None
+
+        failures: list[str] = []
+        try:
+            current_session.stop()
+        except Exception as exc:
+            failures.append(str(exc))
+        if self.session is None:
+            try:
+                current_session.join()
+            except Exception as exc:
+                failures.append(str(exc))
+
+        if failures:
+            return "; ".join(failures)
+        return None
 
     def _discard_pending_events(self) -> None:
         while True:

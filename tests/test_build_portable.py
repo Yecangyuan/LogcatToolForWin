@@ -1,0 +1,29 @@
+import zipfile
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.build_portable import build_portable
+
+
+def test_build_portable_creates_zip_with_exe_and_platform_tools(tmp_path: Path) -> None:
+    app_dir = tmp_path / "dist" / "logcat-tool-for-win"
+    app_dir.mkdir(parents=True)
+    (app_dir / "logcat-tool-for-win.exe").write_text("exe", encoding="utf-8")
+
+    platform_tools = tmp_path / "platform-tools"
+    platform_tools.mkdir()
+    (platform_tools / "adb.exe").write_text("adb", encoding="utf-8")
+
+    readme = tmp_path / "README.md"
+    readme.write_text("# Portable", encoding="utf-8")
+
+    zip_path = build_portable(tmp_path / "dist", platform_tools, readme, tmp_path / "artifacts")
+
+    assert zip_path.exists()
+    with zipfile.ZipFile(zip_path) as archive:
+        names = set(archive.namelist())
+    assert "logcat-tool-for-win/logcat-tool-for-win.exe" in names
+    assert "logcat-tool-for-win/platform-tools/adb.exe" in names
+    assert "logcat-tool-for-win/README.md" in names

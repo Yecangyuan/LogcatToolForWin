@@ -12,10 +12,17 @@ def build_portable(
     readme_path: Path,
     output_root: Path,
 ) -> Path:
-    if output_root.resolve() == dist_root.resolve():
+    app_dir = dist_root / "logcat-tool-for-win"
+    resolved_dist_root = dist_root.resolve()
+    resolved_app_dir = app_dir.resolve()
+    resolved_output_root = output_root.resolve()
+    if (
+        resolved_output_root == resolved_dist_root
+        or resolved_output_root == resolved_app_dir
+        or resolved_app_dir in resolved_output_root.parents
+    ):
         raise ValueError("output_root must not overlap the built app directory")
 
-    app_dir = dist_root / "logcat-tool-for-win"
     if not app_dir.exists():
         raise FileNotFoundError(f"Missing built app directory: {app_dir}")
     if not platform_tools_dir.exists():

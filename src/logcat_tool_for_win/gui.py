@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 import queue
 from pathlib import Path
+from typing import Optional, Union
 
 try:
     import tkinter as tk
@@ -12,7 +13,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - depends on interpreter 
     filedialog = None
     messagebox = None
     ttk = None
-    TK_IMPORT_ERROR: ModuleNotFoundError | None = exc
+    TK_IMPORT_ERROR: Optional[ModuleNotFoundError] = exc
 else:
     TK_IMPORT_ERROR = None
 
@@ -104,7 +105,7 @@ class LogcatToolGUI:
         self.presets_file = get_presets_file()
         self.events: queue.Queue[StreamEvent] = queue.Queue()
         self.devices: list[DeviceInfo] = []
-        self.session: LogcatSession | None = None
+        self.session: Optional[LogcatSession] = None
         self.raw_lines: deque[LogEntry] = deque(maxlen=RAW_LOG_CAP)
         self.visible_lines: deque[LogEntry] = deque(maxlen=VISIBLE_LOG_CAP)
         self.filters, self.highlight_rules, recent_target = load_state(self.state_file)
@@ -396,7 +397,7 @@ class LogcatToolGUI:
             pady=8,
         ).pack(fill=tk.X, pady=(10, 0))
 
-    def _panel_label(self, parent: ttk.Frame | ttk.LabelFrame, text: str) -> ttk.Label:
+    def _panel_label(self, parent: Union[ttk.Frame, ttk.LabelFrame], text: str) -> ttk.Label:
         return ttk.Label(parent, text=text, style="Panel.TLabel")
 
     def _bind_shortcuts(self) -> None:
@@ -776,7 +777,7 @@ class LogcatToolGUI:
                 self.status.active_device_serial = ""
         self._update_status()
 
-    def _stop_active_session(self, manual: bool) -> str | None:
+    def _stop_active_session(self, manual: bool) -> Optional[str]:
         self.manual_stop = manual
         current_session = self.session
         if current_session is None:

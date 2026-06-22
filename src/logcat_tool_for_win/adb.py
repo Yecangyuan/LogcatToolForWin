@@ -21,6 +21,10 @@ def resolve_adb_path() -> Path:
         return Path(override)
 
     if getattr(sys, "frozen", False):
+        bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+        bundled_adb = bundle_root / "platform-tools" / "adb.exe"
+        if bundled_adb.exists():
+            return bundled_adb
         return Path(sys.executable).resolve().parent / "platform-tools" / "adb.exe"
 
     return Path(__file__).resolve().parent / "resources" / "platform-tools" / "adb.exe"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(slots=True)
@@ -56,5 +57,5 @@ class AppStatus:
 @dataclass(slots=True)
 class StreamEvent:
     kind: str
-    entry: LogEntry | None = None
+    entry: Optional[LogEntry] = None
     message: str = ""

@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -37,6 +38,25 @@ def test_resolve_adb_path_prefers_env_override(monkeypatch: pytest.MonkeyPatch, 
     adb_path = tmp_path / "custom-adb.exe"
     monkeypatch.setenv("LOGCAT_TOOL_ADB", str(adb_path))
     assert resolve_adb_path() == adb_path
+
+
+def test_resolve_adb_path_prefers_embedded_platform_tools_when_frozen(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
+    embedded_adb.parent.mkdir(parents=True)
+    embedded_adb.write_text("adb", encoding="utf-8")
+
+    frozen_sys = SimpleNamespace(
+        executable=str(tmp_path / "logcat-tool-for-win.exe"),
+        frozen=True,
+        _MEIPASS=str(tmp_path / "_MEI12345"),
+    )
+    monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb.sys", frozen_sys)
+
+    assert resolve_adb_path() == embedded_adb
 
 
 def test_build_logcat_command_uses_resolved_adb_path_and_filter_spec(

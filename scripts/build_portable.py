@@ -12,19 +12,18 @@ def build_portable(
     readme_path: Path,
     output_root: Path,
 ) -> Path:
-    app_dir = dist_root / "logcat-tool-for-win"
     resolved_dist_root = dist_root.resolve()
-    resolved_app_dir = app_dir.resolve()
     resolved_output_root = output_root.resolve()
     if (
         resolved_output_root == resolved_dist_root
-        or resolved_output_root == resolved_app_dir
-        or resolved_app_dir in resolved_output_root.parents
+        or resolved_dist_root in resolved_output_root.parents
+        or resolved_output_root in resolved_dist_root.parents
     ):
         raise ValueError("output_root must not overlap the built app directory")
 
-    if not app_dir.exists():
-        raise FileNotFoundError(f"Missing built app directory: {app_dir}")
+    built_exe = dist_root / "logcat-tool-for-win.exe"
+    if not built_exe.exists():
+        raise FileNotFoundError(f"Missing built executable: {built_exe}")
     if not platform_tools_dir.exists():
         raise FileNotFoundError(f"Missing platform-tools directory: {platform_tools_dir}")
     adb_exe = platform_tools_dir / "adb.exe"
@@ -42,8 +41,8 @@ def build_portable(
     if zip_path.exists():
         zip_path.unlink()
 
-    shutil.copytree(app_dir, release_dir)
-    shutil.copytree(platform_tools_dir, release_dir / "platform-tools")
+    release_dir.mkdir(parents=True)
+    shutil.copy2(built_exe, release_dir / built_exe.name)
     shutil.copy2(readme_path, release_dir / "README.md")
 
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:

@@ -144,6 +144,18 @@ def make_device(serial: str, state: str = "device", transport: str | None = None
     )
 
 
+def make_modeled_device(serial: str, model: str, transport: str = "usb") -> DeviceInfo:
+    return DeviceInfo(
+        serial=serial,
+        display_name=model,
+        transport=transport,
+        state="device",
+        model=model,
+        product="pixel",
+        raw_descriptor=serial,
+    )
+
+
 def make_entry(message: str = "ANR detected") -> LogEntry:
     return LogEntry(
         timestamp_text="06-18 10:00:00.000",
@@ -464,6 +476,18 @@ def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
 
     assert controller.devices == [device]
     assert controller.device_var.get() == gui.device_label(device)
+
+
+def test_current_device_resolves_duplicate_models_by_unique_label() -> None:
+    controller = make_controller()
+    first_device = make_modeled_device("USB123", "Pixel_8")
+    second_device = make_modeled_device("USB456", "Pixel_8")
+    controller.devices = [first_device, second_device]
+    controller.device_var.set(gui.device_label(second_device))
+
+    selected = gui.LogcatToolGUI._current_device(controller)
+
+    assert selected.serial == second_device.serial
 
 
 def test_connect_tcp_schedules_connect_and_refresh(monkeypatch) -> None:

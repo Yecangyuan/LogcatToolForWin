@@ -31,4 +31,20 @@ malformed
     assert devices[2].state == "offline"
     assert devices[2].display_name == "emulator-5554"
     assert devices[3].display_name == "ZX1G22ABC"
-    assert device_label(devices[1]) == "Pixel_8_Pro [tcp]"
+    assert device_label(devices[1]) == "Pixel_8_Pro [tcp] (192.168.0.15:5555)"
+    assert device_label(devices[2]) == "emulator-5554 [usb]"
+
+
+def test_device_label_includes_serial_for_modeled_devices() -> None:
+    output = """List of devices attached
+USB123\tdevice product:shiba model:Pixel_8 transport_id:5
+USB456\tdevice product:shiba model:Pixel_8 transport_id:6
+"""
+
+    devices = parse_devices_output(output)
+
+    assert [device_label(device) for device in devices] == [
+        "Pixel_8 [usb] (USB123)",
+        "Pixel_8 [usb] (USB456)",
+    ]
+    assert len({device_label(device) for device in devices}) == 2

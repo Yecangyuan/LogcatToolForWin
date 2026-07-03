@@ -18,9 +18,13 @@ else:
     TK_IMPORT_ERROR = None
 
 from logcat_tool_for_win.adb import (
+    DEFAULT_TCP_PORT,
     build_logcat_command,
     clear_logcat,
     connect_device,
+    enable_tcpip,
+    extract_tcp_port,
+    get_device_route_ip,
     list_devices,
     restart_server,
 )
@@ -224,6 +228,12 @@ class LogcatToolGUI:
         ttk.Button(toolbar, text="连接", style="App.TButton", command=self.connect_tcp).pack(
             side=tk.LEFT, padx=4
         )
+        ttk.Button(
+            toolbar,
+            text="开启无线",
+            style="App.TButton",
+            command=self.enable_wireless_adb,
+        ).pack(side=tk.LEFT, padx=4)
         ttk.Button(toolbar, text="开始", style="App.TButton", command=self.start_stream).pack(
             side=tk.LEFT, padx=4
         )
@@ -481,6 +491,51 @@ class LogcatToolGUI:
             self.refresh_devices()
         except Exception as exc:
             messagebox.showerror("连接失败", str(exc))
+            self.status.last_error = str(exc)
+            self._update_status()
+
+    def enable_wireless_adb(self) -> None:
+        try:
+            device = self._current_device()
+        except ValueError as exc:
+            messagebox.showwarning("需要选择设备", str(exc))
+            return
+
+        if device.state != "device":
+            messagebox.showwarning(
+                "设备未就绪",
+                f"当前设备状态为 {device.state}，请先选择已就绪的 USB 设备。",
+            )
+            return
+        if device.transport != "usb":
+            messagebox.showwarning("需要 USB 设备", "请先选择通过 USB 连接的设备。")
+            return
+
+        try:
+            port = extract_tcp_port(self.connect_var.get().strip(), DEFAULT_TCP_PORT)
+        except Exception as exc:
+            messagebox.showwarning("TCP 端口无效", str(exc))
+            return
+
+        try:
+            route_ip = ""
+            try:
+                route_ip = get_device_route_ip(device.serial)
+            except Exception:
+                route_ip = ""
+
+            tcpip_message = enable_tcpip(device.serial, port).strip()
+            if route_ip:
+                target = f"{route_ip}:{port}"
+                self.connect_var.set(target)
+                connect_message = connect_device(target, attempts=3, delay_seconds=1.0).strip()
+                self.status.last_error = connect_message or f"已连接 {target}"
+            else:
+                prefix = tcpip_message or "已开启无线 ADB。"
+                self.status.last_error = f"{prefix} 请在连接框输入手机 IP:{port} 后点连接。"
+            self.refresh_devices()
+        except Exception as exc:
+            messagebox.showerror("开启无线失败", str(exc))
             self.status.last_error = str(exc)
             self._update_status()
 

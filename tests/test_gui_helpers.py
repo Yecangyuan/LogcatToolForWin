@@ -101,6 +101,7 @@ def make_controller() -> gui.LogcatToolGUI:
     controller.status_var = DummyVar("")
     controller.summary_var = DummyVar("")
     controller.device_var = DummyVar("")
+    controller.connect_var = DummyVar("")
     controller.device_combo = DummyCombo()
     controller.raw_lines = deque()
     controller.visible_lines = deque()
@@ -246,3 +247,57 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh() -> None:
     gui.LogcatToolGUI._retry_stream(controller)
 
     assert started_with == [gui.device_label(target_device)]
+
+
+def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    calls: list[tuple[str, object]] = []
+
+    controller._current_device = lambda: selected_device
+    controller.refresh_devices = lambda: calls.append(("refresh", None))
+    controller._update_status = lambda: calls.append(("status", None))
+
+    def fake_get_device_route_ip(serial: str) -> str:
+        calls.append(("route_ip", serial))
+        return "192.168.1.111"
+
+    def fake_enable_tcpip(serial: str, port: int) -> str:
+        calls.append(("tcpip", (serial, port)))
+        return "restarting in TCP mode port: 5555\n"
+
+    def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+        calls.append(("connect", (target, attempts, delay_seconds)))
+        return "connected to 192.168.1.111:5555\n"
+
+    monkeypatch.setattr(gui, "get_device_route_ip", fake_get_device_route_ip)
+    monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+
+    gui.LogcatToolGUI.enable_wireless_adb(controller)
+
+    assert calls == [
+        ("route_ip", "USB123"),
+        ("tcpip", ("USB123", 5555)),
+        ("connect", ("192.168.1.111:5555", 3, 1.0)),
+        ("refresh", None),
+    ]
+    assert controller.connect_var.get() == "192.168.1.111:5555"
+    assert controller.status.last_error == "connected to 192.168.1.111:5555"
+
+
+def test_enable_wireless_adb_explains_manual_connect_when_ip_is_unknown(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    calls: list[tuple[str, object]] = []
+
+    controller._current_device = lambda: selected_device
+    controller.refresh_devices = lambda: calls.append(("refresh", None))
+
+    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "")
+    monkeypatch.setattr(gui, "enable_tcpip", lambda serial, port: "restarting in TCP mode port: 5555\n")
+
+    gui.LogcatToolGUI.enable_wireless_adb(controller)
+
+    assert calls == [("refresh", None)]
+    assert "手机 IP:5555" in controller.status.last_error

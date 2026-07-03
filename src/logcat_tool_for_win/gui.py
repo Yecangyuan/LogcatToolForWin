@@ -537,8 +537,8 @@ class LogcatToolGUI:
         if target != raw_target:
             self.connect_var.set(target)
 
-        def action() -> tuple[str, list[DeviceInfo]]:
-            return connect_device(target).strip(), list_devices()
+        def action() -> tuple[str, str, list[DeviceInfo]]:
+            return target, connect_device(target).strip(), list_devices()
 
         self._run_background_task(
             f"正在连接 {target}...",
@@ -547,10 +547,11 @@ class LogcatToolGUI:
             self._handle_connect_tcp_error,
         )
 
-    def _handle_connect_tcp_success(self, result: tuple[str, list[DeviceInfo]]) -> None:
-        message, devices = result
+    def _handle_connect_tcp_success(self, result: tuple[str, str, list[DeviceInfo]]) -> None:
+        target, message, devices = result
         self._apply_devices(devices)
-        self.status.last_error = message
+        self._select_device_by_serial(target)
+        self.status.last_error = message or f"已连接 {target}"
         self._update_status()
 
     def _handle_connect_tcp_error(self, exc: Exception) -> None:
@@ -611,6 +612,8 @@ class LogcatToolGUI:
         if target:
             self.connect_var.set(target)
         self._apply_devices(devices)
+        if target:
+            self._select_device_by_serial(target)
         self.status.last_error = message
         self._update_status()
 
@@ -625,6 +628,15 @@ class LogcatToolGUI:
             if device_label(device) == current:
                 return device
         raise ValueError("未选择设备。")
+
+    def _select_device_by_serial(self, serial: str) -> bool:
+        for device in self.devices:
+            if device.serial == serial:
+                self.device_var.set(device_label(device))
+                if self.status.stream_state not in {"streaming", "reconnecting"}:
+                    self.status.active_device_serial = device.serial
+                return True
+        return False
 
     def _current_filters(self) -> FilterState:
         return FilterState(

@@ -841,6 +841,8 @@ class LogcatToolGUI:
         updated = False
         full_render_required = False
         new_visible_entries: list[LogEntry] = []
+        filters_snapshot: Optional[FilterState] = None
+        highlight_rules_snapshot: Optional[list[HighlightRule]] = None
         processed = 0
 
         while processed < MAX_EVENTS_PER_TICK:
@@ -857,7 +859,16 @@ class LogcatToolGUI:
                 if self.status.reconnect_attempt:
                     self.status.reconnect_attempt = 0
                     self.status.last_error = ""
-                visible_entry, entry_full_render_required = self._append_entry(event.entry)
+                if filters_snapshot is None:
+                    filters_snapshot = self._current_filters()
+                    highlight_rules_snapshot = self._current_highlight_rules()
+                    self.filters = filters_snapshot
+                    self.highlight_rules = highlight_rules_snapshot
+                visible_entry, entry_full_render_required = self._append_entry(
+                    event.entry,
+                    filters_snapshot,
+                    highlight_rules_snapshot,
+                )
                 if visible_entry is not None:
                     new_visible_entries.append(visible_entry)
                 full_render_required = full_render_required or entry_full_render_required
@@ -881,10 +892,17 @@ class LogcatToolGUI:
         delay = 0 if self.status.queue_depth else QUEUE_DRAIN_MS
         self.root.after(delay, self._poll_stream)
 
-    def _append_entry(self, entry: LogEntry) -> tuple[Optional[LogEntry], bool]:
+    def _append_entry(
+        self,
+        entry: LogEntry,
+        filters: Optional[FilterState] = None,
+        rules: Optional[list[HighlightRule]] = None,
+    ) -> tuple[Optional[LogEntry], bool]:
         self.raw_lines.append(entry)
-        filters = self._current_filters()
-        rules = self._current_highlight_rules()
+        if filters is None:
+            filters = self._current_filters()
+        if rules is None:
+            rules = self._current_highlight_rules()
         self.filters = filters
         self.highlight_rules = rules
         entry.matches_filters = entry_matches(entry, filters)

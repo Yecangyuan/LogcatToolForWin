@@ -5,7 +5,14 @@ import queue
 from types import SimpleNamespace
 
 import logcat_tool_for_win.gui as gui
-from logcat_tool_for_win.models import AppStatus, DeviceInfo, FilterState, LogEntry, StreamEvent
+from logcat_tool_for_win.models import (
+    AppStatus,
+    DeviceInfo,
+    FilterState,
+    HighlightRule,
+    LogEntry,
+    StreamEvent,
+)
 
 DUMMY_TK = SimpleNamespace(NORMAL="normal", DISABLED="disabled", END="end")
 
@@ -228,6 +235,36 @@ def test_poll_stream_appends_new_visible_lines_without_full_redraw() -> None:
     ]
     assert controller.summary_var.get() == "总行数：1 | 可见：1 | 状态：采集中"
     assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+
+
+def test_poll_stream_reuses_filter_snapshot_for_line_batch() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    for index in range(3):
+        controller.events.put(StreamEvent(kind="line", entry=make_entry(f"line {index}")))
+    filters = FilterState(minimum_level="E")
+    rules = [HighlightRule(name="line", pattern="line", foreground="#fff")]
+    calls: list[str] = []
+
+    def current_filters() -> FilterState:
+        calls.append("filters")
+        return filters
+
+    def current_highlight_rules() -> list[HighlightRule]:
+        calls.append("rules")
+        return rules
+
+    controller._current_filters = current_filters
+    controller._current_highlight_rules = current_highlight_rules
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert calls == ["filters", "rules"]
+    assert len(controller.raw_lines) == 3
+    assert len(controller.visible_lines) == 3
+    assert controller.filters is filters
+    assert controller.highlight_rules is rules
 
 
 def test_poll_stream_full_renders_when_visible_log_cap_rolls_over() -> None:

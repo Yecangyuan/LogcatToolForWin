@@ -70,6 +70,15 @@ class FailingSession:
         return None
 
 
+class ImmediateThread:
+    def __init__(self, target, daemon: bool) -> None:
+        self.target = target
+        self.daemon = daemon
+
+    def start(self) -> None:
+        self.target()
+
+
 def make_device(serial: str, state: str = "device") -> DeviceInfo:
     return DeviceInfo(
         serial=serial,
@@ -111,6 +120,33 @@ def make_controller() -> gui.LogcatToolGUI:
     controller.session = None
     controller.devices = []
     return controller
+
+
+def test_run_background_task_schedules_result_on_tk_thread(monkeypatch) -> None:
+    controller = make_controller()
+    successes: list[str] = []
+    errors: list[Exception] = []
+
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+
+    gui.LogcatToolGUI._run_background_task(
+        controller,
+        "正在执行...",
+        lambda: "ok",
+        successes.append,
+        errors.append,
+    )
+
+    assert controller.status.last_error == "正在执行..."
+    assert successes == []
+    assert errors == []
+    assert len(controller.root.after_calls) == 1
+
+    _delay, callback = controller.root.after_calls[0]
+    callback()
+
+    assert successes == ["ok"]
+    assert errors == []
 
 
 def test_poll_stream_ignores_late_line_events_after_stop() -> None:
@@ -222,6 +258,122 @@ def test_refresh_devices_failure_clears_stale_devices_and_selection(monkeypatch)
     assert "adb unavailable" in controller.status.last_error
 
 
+def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("R58M12345")
+    captured: dict[str, object] = {}
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.refresh_devices_async(controller)
+
+    assert captured["message"] == "正在刷新设备..."
+    devices = captured["action"]()
+    captured["on_success"](devices)
+
+    assert controller.devices == [device]
+    assert controller.device_var.get() == gui.device_label(device)
+
+
+def test_connect_tcp_schedules_connect_and_refresh(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("192.168.1.111:5555")
+    controller.connect_var.set("192.168.1.111:5555")
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    def fake_connect_device(target: str) -> str:
+        calls.append(("connect", target))
+        return "connected to 192.168.1.111:5555\n"
+
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+
+    assert captured["message"] == "正在连接 192.168.1.111:5555..."
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert calls == [("connect", "192.168.1.111:5555")]
+    assert controller.devices == [device]
+    assert controller.status.last_error == "connected to 192.168.1.111:5555"
+
+
+def test_clear_device_logcat_schedules_background_clear(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    controller._current_device = lambda: selected_device
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    def fake_clear_logcat(serial: str) -> None:
+        calls.append(("clear", serial))
+
+    monkeypatch.setattr(gui, "clear_logcat", fake_clear_logcat)
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.clear_device_logcat(controller)
+
+    assert captured["message"] == "正在清空 USB123 的设备日志..."
+    captured["action"]()
+    captured["on_success"](None)
+
+    assert calls == [("clear", "USB123")]
+    assert controller.status.last_error == "已清空设备 logcat。"
+
+
+def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("R58M12345")
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    controller.stop_stream = lambda: calls.append(("stop", None))
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(gui, "restart_server", lambda: calls.append(("restart", None)))
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.restart_adb(controller)
+
+    assert calls == [("stop", None)]
+    assert captured["message"] == "正在重启 ADB..."
+    devices = captured["action"]()
+    captured["on_success"](devices)
+
+    assert calls == [("stop", None), ("restart", None)]
+    assert controller.devices == [device]
+    assert controller.status.last_error == ""
+
+
 def test_build_highlight_text_tag_avoids_builtin_tag_collisions() -> None:
     assert gui.build_highlight_text_tag("E") != "E"
     assert gui.build_highlight_text_tag("filtered-out") != "filtered-out"
@@ -255,7 +407,7 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
     calls: list[tuple[str, object]] = []
 
     controller._current_device = lambda: selected_device
-    controller.refresh_devices = lambda: calls.append(("refresh", None))
+    controller._run_background_task = lambda _message, action, on_success, _on_error: on_success(action())
     controller._update_status = lambda: calls.append(("status", None))
 
     def fake_get_device_route_ip(serial: str) -> str:
@@ -273,14 +425,15 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
     monkeypatch.setattr(gui, "get_device_route_ip", fake_get_device_route_ip)
     monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
     monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(gui, "list_devices", lambda: [])
 
     gui.LogcatToolGUI.enable_wireless_adb(controller)
 
-    assert calls == [
+    adb_calls = [call for call in calls if call[0] != "status"]
+    assert adb_calls == [
         ("route_ip", "USB123"),
         ("tcpip", ("USB123", 5555)),
         ("connect", ("192.168.1.111:5555", 3, 1.0)),
-        ("refresh", None),
     ]
     assert controller.connect_var.get() == "192.168.1.111:5555"
     assert controller.status.last_error == "connected to 192.168.1.111:5555"
@@ -289,15 +442,14 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
 def test_enable_wireless_adb_explains_manual_connect_when_ip_is_unknown(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")
-    calls: list[tuple[str, object]] = []
 
     controller._current_device = lambda: selected_device
-    controller.refresh_devices = lambda: calls.append(("refresh", None))
+    controller._run_background_task = lambda _message, action, on_success, _on_error: on_success(action())
 
     monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "")
     monkeypatch.setattr(gui, "enable_tcpip", lambda serial, port: "restarting in TCP mode port: 5555\n")
+    monkeypatch.setattr(gui, "list_devices", lambda: [])
 
     gui.LogcatToolGUI.enable_wireless_adb(controller)
 
-    assert calls == [("refresh", None)]
     assert "手机 IP:5555" in controller.status.last_error

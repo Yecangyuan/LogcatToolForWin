@@ -38,5 +38,33 @@ def test_source_avoids_pep604_union_syntax_for_legacy_builds() -> None:
     assert offenders == []
 
 
+def test_source_avoids_dataclass_slots_for_legacy_builds() -> None:
+    offenders: list[str] = []
+
+    for path in Path("src").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for decorator in node.decorator_list:
+                if _is_dataclass_with_slots(decorator):
+                    offenders.append(f"{path}:{node.lineno}")
+
+    assert offenders == []
+
+
 def _contains_pep604_union(node: ast.AST) -> bool:
     return any(isinstance(child, ast.BinOp) and isinstance(child.op, ast.BitOr) for child in ast.walk(node))
+
+
+def _is_dataclass_with_slots(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    if isinstance(node.func, ast.Name):
+        is_dataclass = node.func.id == "dataclass"
+    elif isinstance(node.func, ast.Attribute):
+        is_dataclass = node.func.attr == "dataclass"
+    else:
+        is_dataclass = False
+    return is_dataclass and any(keyword.arg == "slots" for keyword in node.keywords)

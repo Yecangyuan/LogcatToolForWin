@@ -498,6 +498,38 @@ def test_connect_tcp_schedules_connect_and_refresh(monkeypatch) -> None:
     assert controller.status.last_error == "connected to 192.168.1.111:5555"
 
 
+def test_connect_tcp_defaults_to_5555_when_port_is_omitted(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("192.168.1.111:5555")
+    controller.connect_var.set("192.168.1.111")
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    def fake_connect_device(target: str) -> str:
+        calls.append(("connect", target))
+        return "connected to 192.168.1.111:5555\n"
+
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+
+    assert controller.connect_var.get() == "192.168.1.111:5555"
+    assert captured["message"] == "正在连接 192.168.1.111:5555..."
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert calls == [("connect", "192.168.1.111:5555")]
+    assert controller.devices == [device]
+
+
 def test_clear_device_logcat_schedules_background_clear(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")

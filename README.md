@@ -102,7 +102,7 @@ No devices appear:
 - Use the app's `刷新` button after connecting USB or a TCP target.
 
 TCP connect fails:
-- Enter targets as `IP:port`.
+- Enter targets as `IP` or `IP:port`; when the port is omitted, the app uses `5555`.
 - To prepare a USB device for wireless ADB, select the USB device and click `开启无线`. The app runs `adb tcpip 5555`, tries to detect the device Wi-Fi IP, then connects to `IP:5555` and refreshes the device list.
 - Confirm the device is already listening for TCP `adb` and reachable from the Windows machine.
 

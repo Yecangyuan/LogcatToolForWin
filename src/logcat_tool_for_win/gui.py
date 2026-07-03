@@ -27,6 +27,7 @@ from logcat_tool_for_win.adb import (
     extract_tcp_port,
     get_device_route_ip,
     list_devices,
+    normalize_tcp_target,
     restart_server,
 )
 from logcat_tool_for_win.config import (
@@ -524,10 +525,17 @@ class LogcatToolGUI:
         )
 
     def connect_tcp(self) -> None:
-        target = self.connect_var.get().strip()
-        if not target:
-            messagebox.showwarning("需要目标地址", "请输入 IP:端口 格式的 TCP 目标。")
+        raw_target = self.connect_var.get().strip()
+        if not raw_target:
+            messagebox.showwarning("需要目标地址", "请输入 IP 或 IP:端口 格式的 TCP 目标。")
             return
+        try:
+            target = normalize_tcp_target(raw_target)
+        except ValueError as exc:
+            messagebox.showwarning("TCP 目标无效", str(exc))
+            return
+        if target != raw_target:
+            self.connect_var.set(target)
 
         def action() -> tuple[str, list[DeviceInfo]]:
             return connect_device(target).strip(), list_devices()

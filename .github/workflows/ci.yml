@@ -4,9 +4,18 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -70,3 +79,90 @@ jobs:
         with:
           name: logcat-tool-for-win
           path: artifacts/logcat-tool-for-win.zip
+
+  build-windows-legacy:
+    runs-on: windows-2022
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.8'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Download legacy Android platform-tools
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src\logcat_tool_for_win\resources | Out-Null
+          $zipPath = Join-Path $env:RUNNER_TEMP "platform-tools_r28.0.2-windows.zip"
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools_r28.0.2-windows.zip" -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath src\logcat_tool_for_win\resources -Force
+
+      - name: Build legacy app
+        run: pyinstaller --noconfirm --clean logcat-tool-for-win.spec
+
+      - name: Assemble legacy portable zip
+        shell: pwsh
+        run: |
+          python scripts/build_portable.py --dist-root dist --output-root artifacts-legacy
+          Move-Item artifacts-legacy\logcat-tool-for-win.zip artifacts-legacy\logcat-tool-for-win-legacy-win7.zip
+
+      - name: Upload legacy artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: logcat-tool-for-win-legacy-win7
+          path: artifacts-legacy/logcat-tool-for-win-legacy-win7.zip
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows
+      - build-windows-legacy
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+
+      - name: Publish release assets
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          release_tag="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            release_tag="latest"
+            short_sha="${GITHUB_SHA::7}"
+            notes="Automated build from main at ${short_sha}."
+
+            git tag --force "$release_tag" "$GITHUB_SHA"
+            git push --force origin "refs/tags/$release_tag"
+
+            if gh release view "$release_tag" >/dev/null 2>&1; then
+              gh release edit "$release_tag" --title "Latest Build" --notes "$notes"
+            else
+              gh release create "$release_tag" --title "Latest Build" --notes "$notes"
+            fi
+          else
+            if ! gh release view "$release_tag" >/dev/null 2>&1; then
+              gh release create "$release_tag" --title "$release_tag" --generate-notes
+            fi
+          fi
+
+          gh release upload "$release_tag" release-artifacts/logcat-tool-for-win/logcat-tool-for-win.zip --clobber
+          gh release upload "$release_tag" release-artifacts/logcat-tool-for-win-legacy-win7/logcat-tool-for-win-legacy-win7.zip --clobber

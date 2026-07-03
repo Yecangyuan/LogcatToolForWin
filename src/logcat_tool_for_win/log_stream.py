@@ -4,7 +4,7 @@ import queue
 import re
 import subprocess
 import threading
-from typing import Callable
+from typing import Callable, Optional
 
 from logcat_tool_for_win.models import LogEntry, StreamEvent
 
@@ -44,8 +44,8 @@ class LogcatSession:
         self.command = command
         self.events = events
         self.popen_factory = popen_factory
-        self.process: subprocess.Popen[str] | None = None
-        self.worker: threading.Thread | None = None
+        self.process: Optional[subprocess.Popen[str]] = None
+        self.worker: Optional[threading.Thread] = None
 
     def start(self) -> None:
         self.process = self.popen_factory(

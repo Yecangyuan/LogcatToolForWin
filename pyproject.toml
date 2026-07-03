@@ -7,7 +7,7 @@ name = "logcat-tool-for-win"
 version = "0.1.0"
 description = "Windows GUI Android logcat viewer with bundled adb."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [{name = "Simley"}]
 dependencies = []
@@ -32,4 +32,4 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py38"

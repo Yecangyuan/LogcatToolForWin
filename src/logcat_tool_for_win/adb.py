@@ -15,12 +15,31 @@ class ADBCommandError(RuntimeError):
     pass
 
 
+def _suppress_windows_error_dialogs() -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        sem_failcriticalerrors = 0x0001
+        sem_nogpfault_error_box = 0x0002
+        kernel32 = ctypes.windll.kernel32
+        current_mode = kernel32.SetErrorMode(0)
+        kernel32.SetErrorMode(current_mode | sem_failcriticalerrors | sem_nogpfault_error_box)
+    except Exception:
+        return
+
+
 def resolve_adb_path() -> Path:
     override = os.environ.get("LOGCAT_TOOL_ADB")
     if override:
         return Path(override)
 
     if getattr(sys, "frozen", False):
+        bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+        bundled_adb = bundle_root / "platform-tools" / "adb.exe"
+        if bundled_adb.exists():
+            return bundled_adb
         return Path(sys.executable).resolve().parent / "platform-tools" / "adb.exe"
 
     return Path(__file__).resolve().parent / "resources" / "platform-tools" / "adb.exe"
@@ -32,23 +51,30 @@ def validate_tcp_target(target: str) -> str:
 
     port = int(port_text)
     if port < 1 or port > 65535:
-        raise ValueError(f"Invalid TCP port: {port_text}")
+        raise ValueError(f"无效的 TCP 端口：{port_text}")
 
     return target
 
 
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
+    _suppress_windows_error_dialogs()
+    run_kwargs = {
+        "capture_output": True,
+        "text": True,
+        "timeout": timeout,
+    }
+    if os.name == "nt":
+        run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
     result = subprocess.run(
         [str(resolve_adb_path()), *args],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
+        **run_kwargs,
     )
     if result.returncode != 0:
         message = (
             result.stderr.strip()
             or result.stdout.strip()
-            or f"adb exited with {result.returncode}"
+            or f"adb 退出，代码：{result.returncode}"
         )
         raise ADBCommandError(message)
     return result

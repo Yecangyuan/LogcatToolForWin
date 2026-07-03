@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 import queue
 from pathlib import Path
+from typing import Optional, Union
 
 try:
     import tkinter as tk
@@ -12,7 +13,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - depends on interpreter 
     filedialog = None
     messagebox = None
     ttk = None
-    TK_IMPORT_ERROR: ModuleNotFoundError | None = exc
+    TK_IMPORT_ERROR: Optional[ModuleNotFoundError] = exc
 else:
     TK_IMPORT_ERROR = None
 
@@ -57,10 +58,20 @@ ACCENT = "#22C55E"
 WARN = "#FB923C"
 ERROR = "#F87171"
 HIGHLIGHT_TAG_PREFIX = "highlight::"
+STREAM_STATE_LABELS = {
+    "idle": "空闲",
+    "streaming": "采集中",
+    "reconnecting": "重连中",
+    "failed": "失败",
+}
 
 
 def build_summary_text(total_lines: int, visible_lines: int, stream_state: str) -> str:
-    return f"Lines: {total_lines} | Visible: {visible_lines} | State: {stream_state}"
+    return f"总行数：{total_lines} | 可见：{visible_lines} | 状态：{format_stream_state(stream_state)}"
+
+
+def format_stream_state(stream_state: str) -> str:
+    return STREAM_STATE_LABELS.get(stream_state, stream_state)
 
 
 def build_highlight_rules(raw: str) -> list[HighlightRule]:
@@ -78,13 +89,13 @@ def build_highlight_text_tag(rule_name: str) -> str:
 
 def format_status_text(status: AppStatus) -> str:
     base = (
-        f"ADB: {'ready' if status.adb_ready else 'missing'} | "
-        f"Device: {status.active_device_serial or '-'} | "
-        f"State: {status.stream_state} | "
-        f"Queue: {status.queue_depth}"
+        f"ADB：{'就绪' if status.adb_ready else '不可用'} | "
+        f"设备：{status.active_device_serial or '-'} | "
+        f"状态：{format_stream_state(status.stream_state)} | "
+        f"队列：{status.queue_depth}"
     )
     if status.reconnect_attempt:
-        base += f" | Reconnect attempt {status.reconnect_attempt}"
+        base += f" | 第 {status.reconnect_attempt} 次重连"
     if status.last_error:
         base += f" | {status.last_error}"
     return base
@@ -93,9 +104,9 @@ def format_status_text(status: AppStatus) -> str:
 class LogcatToolGUI:
     def __init__(self, root: tk.Tk) -> None:
         if TK_IMPORT_ERROR is not None:
-            raise RuntimeError("Tkinter is not available in this Python environment.") from TK_IMPORT_ERROR
+            raise RuntimeError("当前 Python 环境不支持 Tkinter。") from TK_IMPORT_ERROR
         self.root = root
-        self.root.title("Logcat Tool for Win")
+        self.root.title("Windows Logcat 工具")
         self.root.geometry("1280x780")
         self.root.minsize(980, 620)
         self.root.configure(bg=BG)
@@ -104,7 +115,7 @@ class LogcatToolGUI:
         self.presets_file = get_presets_file()
         self.events: queue.Queue[StreamEvent] = queue.Queue()
         self.devices: list[DeviceInfo] = []
-        self.session: LogcatSession | None = None
+        self.session: Optional[LogcatSession] = None
         self.raw_lines: deque[LogEntry] = deque(maxlen=RAW_LOG_CAP)
         self.visible_lines: deque[LogEntry] = deque(maxlen=VISIBLE_LOG_CAP)
         self.filters, self.highlight_rules, recent_target = load_state(self.state_file)
@@ -200,7 +211,7 @@ class LogcatToolGUI:
         self.device_combo.pack(side=tk.LEFT, padx=(0, 8))
         self.device_combo.bind("<<ComboboxSelected>>", lambda _event: self._sync_selected_device())
 
-        ttk.Button(toolbar, text="Refresh", style="App.TButton", command=self.refresh_devices).pack(
+        ttk.Button(toolbar, text="刷新", style="App.TButton", command=self.refresh_devices).pack(
             side=tk.LEFT, padx=4
         )
         self.connect_entry = ttk.Entry(
@@ -210,39 +221,39 @@ class LogcatToolGUI:
             style="App.TEntry",
         )
         self.connect_entry.pack(side=tk.LEFT, padx=8)
-        ttk.Button(toolbar, text="Connect", style="App.TButton", command=self.connect_tcp).pack(
+        ttk.Button(toolbar, text="连接", style="App.TButton", command=self.connect_tcp).pack(
             side=tk.LEFT, padx=4
         )
-        ttk.Button(toolbar, text="Start", style="App.TButton", command=self.start_stream).pack(
+        ttk.Button(toolbar, text="开始", style="App.TButton", command=self.start_stream).pack(
             side=tk.LEFT, padx=4
         )
-        ttk.Button(toolbar, text="Stop", style="App.TButton", command=self.stop_stream).pack(
+        ttk.Button(toolbar, text="停止", style="App.TButton", command=self.stop_stream).pack(
             side=tk.LEFT, padx=4
         )
         ttk.Button(
             toolbar,
-            text="Clear View",
+            text="清空视图",
             style="App.TButton",
             command=self.clear_view,
         ).pack(side=tk.LEFT, padx=4)
         ttk.Button(
             toolbar,
-            text="Clear Device Logcat",
+            text="清空设备日志",
             style="App.TButton",
             command=self.clear_device_logcat,
         ).pack(side=tk.LEFT, padx=4)
         ttk.Button(
             toolbar,
-            text="Export Visible",
+            text="导出可见",
             style="App.TButton",
             command=self.export_visible,
         ).pack(side=tk.LEFT, padx=4)
-        ttk.Button(toolbar, text="Export Raw", style="App.TButton", command=self.export_raw).pack(
+        ttk.Button(toolbar, text="导出原始", style="App.TButton", command=self.export_raw).pack(
             side=tk.LEFT, padx=4
         )
         ttk.Button(
             toolbar,
-            text="Restart ADB",
+            text="重启 ADB",
             style="App.TButton",
             command=self.restart_adb,
         ).pack(side=tk.LEFT, padx=4)
@@ -257,13 +268,13 @@ class LogcatToolGUI:
 
         filters_panel = ttk.LabelFrame(
             controls,
-            text="Filters",
+            text="筛选",
             style="Panel.TLabelframe",
             padding=10,
         )
         filters_panel.pack(fill=tk.X)
 
-        self._panel_label(filters_panel, "Level").pack(anchor=tk.W)
+        self._panel_label(filters_panel, "级别").pack(anchor=tk.W)
         self.level_combo = ttk.Combobox(
             filters_panel,
             textvariable=self.level_var,
@@ -273,12 +284,12 @@ class LogcatToolGUI:
         )
         self.level_combo.pack(fill=tk.X, pady=(4, 8))
 
-        self._panel_label(filters_panel, "Tags (comma separated)").pack(anchor=tk.W)
+        self._panel_label(filters_panel, "标签（逗号分隔）").pack(anchor=tk.W)
         ttk.Entry(filters_panel, textvariable=self.tag_var, style="App.TEntry").pack(
             fill=tk.X, pady=(4, 8)
         )
 
-        self._panel_label(filters_panel, "Keyword").pack(anchor=tk.W)
+        self._panel_label(filters_panel, "关键词").pack(anchor=tk.W)
         self.keyword_entry = ttk.Entry(
             filters_panel,
             textvariable=self.keyword_var,
@@ -286,33 +297,33 @@ class LogcatToolGUI:
         )
         self.keyword_entry.pack(fill=tk.X, pady=(4, 8))
 
-        self._panel_label(filters_panel, "Highlight Keywords").pack(anchor=tk.W)
+        self._panel_label(filters_panel, "高亮关键词").pack(anchor=tk.W)
         ttk.Entry(filters_panel, textvariable=self.highlight_var, style="App.TEntry").pack(
             fill=tk.X, pady=(4, 8)
         )
 
         ttk.Checkbutton(
             filters_panel,
-            text="Auto Scroll",
+            text="自动滚动",
             style="App.TCheckbutton",
             variable=self.auto_scroll_var,
         ).pack(anchor=tk.W, pady=2)
         ttk.Checkbutton(
             filters_panel,
-            text="Match Only",
+            text="仅显示匹配",
             style="App.TCheckbutton",
             variable=self.match_only_var,
         ).pack(anchor=tk.W, pady=(2, 0))
 
         presets_panel = ttk.LabelFrame(
             controls,
-            text="Presets",
+            text="预设",
             style="Panel.TLabelframe",
             padding=10,
         )
         presets_panel.pack(fill=tk.X, pady=(12, 0))
 
-        self._panel_label(presets_panel, "Preset Name").pack(anchor=tk.W)
+        self._panel_label(presets_panel, "预设名称").pack(anchor=tk.W)
         self.preset_combo = ttk.Combobox(
             presets_panel,
             textvariable=self.preset_var,
@@ -323,19 +334,19 @@ class LogcatToolGUI:
 
         ttk.Button(
             presets_panel,
-            text="Save Preset",
+            text="保存预设",
             style="App.TButton",
             command=self.save_named_preset,
         ).pack(fill=tk.X, pady=2)
         ttk.Button(
             presets_panel,
-            text="Load Preset",
+            text="加载预设",
             style="App.TButton",
             command=self.load_named_preset,
         ).pack(fill=tk.X, pady=2)
         ttk.Button(
             presets_panel,
-            text="Save Session State",
+            text="保存会话状态",
             style="App.TButton",
             command=self.save_session_state,
         ).pack(fill=tk.X, pady=(10, 2))
@@ -345,7 +356,7 @@ class LogcatToolGUI:
 
         tk.Label(
             viewer_header,
-            text="Live Log Viewer",
+            text="实时日志",
             bg=SURFACE,
             fg=TEXT,
             font=("TkDefaultFont", 11, "bold"),
@@ -396,7 +407,7 @@ class LogcatToolGUI:
             pady=8,
         ).pack(fill=tk.X, pady=(10, 0))
 
-    def _panel_label(self, parent: ttk.Frame | ttk.LabelFrame, text: str) -> ttk.Label:
+    def _panel_label(self, parent: Union[ttk.Frame, ttk.LabelFrame], text: str) -> ttk.Label:
         return ttk.Label(parent, text=text, style="Panel.TLabel")
 
     def _bind_shortcuts(self) -> None:
@@ -461,7 +472,7 @@ class LogcatToolGUI:
     def connect_tcp(self) -> None:
         target = self.connect_var.get().strip()
         if not target:
-            messagebox.showwarning("Target Required", "Enter a TCP target in IP:port form.")
+            messagebox.showwarning("需要目标地址", "请输入 IP:端口 格式的 TCP 目标。")
             return
 
         try:
@@ -469,7 +480,7 @@ class LogcatToolGUI:
             self.status.last_error = message
             self.refresh_devices()
         except Exception as exc:
-            messagebox.showerror("Connect Failed", str(exc))
+            messagebox.showerror("连接失败", str(exc))
             self.status.last_error = str(exc)
             self._update_status()
 
@@ -478,7 +489,7 @@ class LogcatToolGUI:
         for device in self.devices:
             if device_label(device) == current:
                 return device
-        raise ValueError("No device selected.")
+        raise ValueError("未选择设备。")
 
     def _current_filters(self) -> FilterState:
         return FilterState(
@@ -496,13 +507,13 @@ class LogcatToolGUI:
         try:
             device = self._current_device()
         except ValueError as exc:
-            messagebox.showwarning("Device Required", str(exc))
+            messagebox.showwarning("需要选择设备", str(exc))
             return
 
         if device.state != "device":
             messagebox.showwarning(
-                "Device Not Ready",
-                f"Selected device is {device.state}. Choose a ready device first.",
+                "设备未就绪",
+                f"当前设备状态为 {device.state}，请先选择已就绪的设备。",
             )
             return
 
@@ -510,7 +521,7 @@ class LogcatToolGUI:
         if stop_error:
             self.status.stream_state = "failed"
             self.status.last_error = stop_error
-            messagebox.showerror("Stop Failed", stop_error)
+            messagebox.showerror("停止失败", stop_error)
             self._update_status()
             return
         self.filters = self._current_filters()
@@ -536,7 +547,7 @@ class LogcatToolGUI:
             self.manual_stop = True
             self.status.stream_state = "failed"
             self.status.last_error = str(exc)
-            messagebox.showerror("Start Failed", str(exc))
+            messagebox.showerror("启动失败", str(exc))
         self._update_status()
 
     def stop_stream(self) -> None:
@@ -563,12 +574,12 @@ class LogcatToolGUI:
         try:
             device = self._current_device()
             clear_logcat(device.serial)
-            self.status.last_error = "Device logcat cleared."
+            self.status.last_error = "已清空设备 logcat。"
             self._update_status()
         except ValueError as exc:
-            messagebox.showwarning("Device Required", str(exc))
+            messagebox.showwarning("需要选择设备", str(exc))
         except Exception as exc:
-            messagebox.showerror("Clear Failed", str(exc))
+            messagebox.showerror("清空失败", str(exc))
             self.status.last_error = str(exc)
             self._update_status()
 
@@ -579,21 +590,21 @@ class LogcatToolGUI:
             self.status.last_error = ""
             self.refresh_devices()
         except Exception as exc:
-            messagebox.showerror("ADB Restart Failed", str(exc))
+            messagebox.showerror("ADB 重启失败", str(exc))
             self.status.last_error = str(exc)
             self._update_status()
 
     def save_named_preset(self) -> None:
         name = self.preset_var.get().strip()
         if not name:
-            messagebox.showwarning("Preset Required", "Enter a preset name before saving.")
+            messagebox.showwarning("需要预设名称", "保存前请输入预设名称。")
             return
 
         filters = self._current_filters()
         try:
             save_preset(self.presets_file, name, filters)
         except Exception as exc:
-            messagebox.showerror("Preset Save Failed", str(exc))
+            messagebox.showerror("保存预设失败", str(exc))
             return
 
         self.named_presets[name] = filters
@@ -604,7 +615,7 @@ class LogcatToolGUI:
         name = self.preset_var.get().strip()
         preset = self.named_presets.get(name)
         if preset is None:
-            messagebox.showwarning("Preset Missing", f"No preset named '{name}' was found.")
+            messagebox.showwarning("预设不存在", f"未找到名为“{name}”的预设。")
             return
 
         self.level_var.set(preset.minimum_level)
@@ -623,17 +634,17 @@ class LogcatToolGUI:
                 self.highlight_rules,
                 self.connect_var.get().strip(),
             )
-            self.status.last_error = "Session state saved."
+            self.status.last_error = "会话状态已保存。"
         except Exception as exc:
-            messagebox.showerror("Save Failed", str(exc))
+            messagebox.showerror("保存失败", str(exc))
             self.status.last_error = str(exc)
         self._update_status()
 
     def export_visible(self) -> None:
-        self._export_entries(list(self.visible_lines), "visible")
+        self._export_entries(list(self.visible_lines), "可见")
 
     def export_raw(self) -> None:
-        self._export_entries(list(self.raw_lines), "raw")
+        self._export_entries(list(self.raw_lines), "原始")
 
     def _export_entries(self, entries: list[LogEntry], label: str) -> None:
         path = filedialog.asksaveasfilename(defaultextension=".txt")
@@ -641,9 +652,9 @@ class LogcatToolGUI:
             return
         try:
             export_lines(Path(path), [entry.raw_line for entry in entries])
-            self.status.last_error = f"Exported {label} log lines."
+            self.status.last_error = f"已导出{label}日志。"
         except Exception as exc:
-            messagebox.showerror("Export Failed", str(exc))
+            messagebox.showerror("导出失败", str(exc))
             self.status.last_error = str(exc)
         self._update_status()
 
@@ -652,7 +663,7 @@ class LogcatToolGUI:
             return
         if self.status.reconnect_attempt >= MAX_RECONNECT_ATTEMPTS:
             self.status.stream_state = "failed"
-            self.status.last_error = "Reconnect attempts exhausted."
+            self.status.last_error = "重连次数已用尽。"
             self._update_status()
             return
 
@@ -660,7 +671,7 @@ class LogcatToolGUI:
         self.status.reconnect_attempt += 1
         self.status.stream_state = "reconnecting"
         if not self.status.last_error:
-            self.status.last_error = "Stream stopped unexpectedly."
+            self.status.last_error = "日志流意外停止。"
         self._update_status()
         self.root.after(RECONNECT_DELAY_MS, self._retry_stream)
 
@@ -677,7 +688,7 @@ class LogcatToolGUI:
                 return
 
         self.status.stream_state = "failed"
-        self.status.last_error = "Device not available for reconnect."
+        self.status.last_error = "重连设备不可用。"
         self._update_status()
 
     def _poll_stream(self) -> None:
@@ -776,7 +787,7 @@ class LogcatToolGUI:
                 self.status.active_device_serial = ""
         self._update_status()
 
-    def _stop_active_session(self, manual: bool) -> str | None:
+    def _stop_active_session(self, manual: bool) -> Optional[str]:
         self.manual_stop = manual
         current_session = self.session
         if current_session is None:
@@ -821,7 +832,7 @@ class LogcatToolGUI:
 
 def main() -> int:
     if TK_IMPORT_ERROR is not None:
-        raise RuntimeError("Tkinter is not available in this Python environment.") from TK_IMPORT_ERROR
+        raise RuntimeError("当前 Python 环境不支持 Tkinter。") from TK_IMPORT_ERROR
     root = tk.Tk()
     LogcatToolGUI(root)
     root.mainloop()

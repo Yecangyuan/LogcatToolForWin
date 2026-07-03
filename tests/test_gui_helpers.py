@@ -9,7 +9,7 @@ from logcat_tool_for_win.models import AppStatus, DeviceInfo, FilterState, LogEn
 
 
 def test_build_summary_text_reports_total_and_visible_counts() -> None:
-    assert gui.build_summary_text(120, 24, "streaming") == "Lines: 120 | Visible: 24 | State: streaming"
+    assert gui.build_summary_text(120, 24, "streaming") == "总行数：120 | 可见：24 | 状态：采集中"
 
 
 def test_format_status_text_includes_reconnect_attempt() -> None:
@@ -25,7 +25,7 @@ def test_format_status_text_includes_reconnect_attempt() -> None:
     text = gui.format_status_text(status)
 
     assert "R58M12345" in text
-    assert "attempt 2" in text
+    assert "第 2 次重连" in text
 
 
 def test_build_highlight_rules_creates_rules_from_csv_text() -> None:

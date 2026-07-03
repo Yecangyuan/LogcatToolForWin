@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from logcat_tool_for_win.models import FilterState, LogEntry
 
 LEVEL_ORDER = ("V", "D", "I", "W", "E", "F")
@@ -9,7 +11,7 @@ def _normalize_level(level: str) -> str:
     return level.upper()
 
 
-def _level_rank(level: str) -> int | None:
+def _level_rank(level: str) -> Optional[int]:
     normalized = _normalize_level(level)
     if normalized not in LEVEL_ORDER:
         return None

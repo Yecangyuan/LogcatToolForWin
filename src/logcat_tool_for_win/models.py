@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 
-@dataclass(slots=True)
+@dataclass
 class DeviceInfo:
     serial: str
     display_name: str
@@ -14,7 +15,7 @@ class DeviceInfo:
     raw_descriptor: str
 
 
-@dataclass(slots=True)
+@dataclass
 class FilterState:
     minimum_level: str = "V"
     tag_filters: tuple[str, ...] = ()
@@ -23,7 +24,7 @@ class FilterState:
     auto_scroll: bool = True
 
 
-@dataclass(slots=True)
+@dataclass
 class HighlightRule:
     name: str
     pattern: str
@@ -32,7 +33,7 @@ class HighlightRule:
     case_sensitive: bool = False
 
 
-@dataclass(slots=True)
+@dataclass
 class LogEntry:
     timestamp_text: str
     level: str
@@ -43,7 +44,7 @@ class LogEntry:
     highlight_keys: tuple[str, ...] = ()
 
 
-@dataclass(slots=True)
+@dataclass
 class AppStatus:
     adb_ready: bool = False
     active_device_serial: str = ""
@@ -53,8 +54,8 @@ class AppStatus:
     reconnect_attempt: int = 0
 
 
-@dataclass(slots=True)
+@dataclass
 class StreamEvent:
     kind: str
-    entry: LogEntry | None = None
+    entry: Optional[LogEntry] = None
     message: str = ""

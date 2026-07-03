@@ -4,7 +4,7 @@ a = Analysis(
     ["src/logcat_tool_for_win/__main__.py"],
     pathex=["src"],
     binaries=[],
-    datas=[],
+    datas=[("src/logcat_tool_for_win/resources/platform-tools", "platform-tools")],
     hiddenimports=["tkinter"],
     hookspath=[],
     hooksconfig={},
@@ -16,16 +16,10 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    [],
-    exclude_binaries=True,
-    name="logcat-tool-for-win",
-    console=False,
-)
-coll = COLLECT(
-    exe,
     a.binaries,
     a.datas,
-    strip=False,
-    upx=True,
+    [],
     name="logcat-tool-for-win",
+    console=False,
+    upx=False,
 )

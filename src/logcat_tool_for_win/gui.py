@@ -730,6 +730,8 @@ class LogcatToolGUI:
 
     def restart_adb(self) -> None:
         self.stop_stream()
+        if self.status.stream_state == "failed":
+            return
         self._run_background_task(
             "正在重启 ADB...",
             self._restart_adb_and_list_devices,

@@ -1,5 +1,6 @@
 import io
 import queue
+import subprocess
 import threading
 
 from logcat_tool_for_win.log_stream import LogcatSession, parse_threadtime_line
@@ -108,6 +109,22 @@ def test_session_emits_no_started_event_when_launch_fails() -> None:
         pass
 
     assert events.empty()
+
+
+def test_session_does_not_inherit_invalid_gui_stdin() -> None:
+    events: queue.Queue = queue.Queue()
+    captured_kwargs = {}
+
+    def popen_factory(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return FakePopen()
+
+    session = LogcatSession(["adb", "logcat"], events, popen_factory)
+
+    session.start()
+    session.join()
+
+    assert captured_kwargs["stdin"] == subprocess.DEVNULL
 
 
 def test_session_drains_stderr_while_stdout_is_still_active() -> None:

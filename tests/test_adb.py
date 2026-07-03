@@ -125,3 +125,26 @@ def test_run_adb_suppresses_windows_error_dialogs_before_launch(
     run_adb(["version"])
 
     assert calls == ["suppressed"]
+
+
+def test_run_adb_does_not_inherit_invalid_gui_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    captured_kwargs = {}
+
+    def fake_run(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    run_adb(["connect", "192.168.0.8:5555"])
+
+    assert captured_kwargs["stdin"] == subprocess.DEVNULL

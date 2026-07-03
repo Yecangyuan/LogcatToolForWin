@@ -262,6 +262,29 @@ def test_poll_stream_appends_new_visible_lines_without_full_redraw() -> None:
     assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
 
 
+def test_append_visible_entries_configures_each_highlight_tag_once() -> None:
+    controller = make_controller()
+    controller.highlight_rules = [
+        HighlightRule(name="ANR", pattern="ANR", foreground="#ffcc00", background="#111111"),
+        HighlightRule(name="unused", pattern="unused", foreground="#ffffff"),
+    ]
+    first_entry = make_entry("ANR first")
+    second_entry = make_entry("ANR second")
+    for entry in (first_entry, second_entry):
+        entry.highlight_keys = ("ANR",)
+        entry.matches_filters = True
+
+    gui.LogcatToolGUI._append_visible_entries(controller, [first_entry, second_entry])
+
+    assert controller.text.tag_config_calls == [
+        ("highlight::ANR", {"foreground": "#ffcc00", "background": "#111111"})
+    ]
+    assert controller.text.tag_add_calls == [
+        ("highlight::ANR", "1.0", "2.0"),
+        ("highlight::ANR", "2.0", "3.0"),
+    ]
+
+
 def test_poll_stream_reuses_filter_snapshot_for_line_batch() -> None:
     controller = make_controller()
     controller.status.stream_state = "streaming"

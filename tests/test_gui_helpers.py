@@ -620,6 +620,28 @@ def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
     assert controller.status.last_error == ""
 
 
+def test_restart_adb_aborts_when_stream_stop_fails(monkeypatch) -> None:
+    controller = make_controller()
+    calls: list[tuple[str, object]] = []
+
+    def fake_stop_stream() -> None:
+        calls.append(("stop", None))
+        controller.status.stream_state = "failed"
+        controller.status.last_error = "stop failed"
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        calls.append(("background", message))
+
+    controller.stop_stream = fake_stop_stream
+    controller._run_background_task = fake_run_background_task
+    monkeypatch.setattr(gui, "restart_server", lambda: calls.append(("restart", None)))
+
+    gui.LogcatToolGUI.restart_adb(controller)
+
+    assert calls == [("stop", None)]
+    assert controller.status.last_error == "stop failed"
+
+
 def test_build_highlight_text_tag_avoids_builtin_tag_collisions() -> None:
     assert gui.build_highlight_text_tag("E") != "E"
     assert gui.build_highlight_text_tag("filtered-out") != "filtered-out"

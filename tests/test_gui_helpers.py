@@ -132,11 +132,11 @@ class ImmediateThread:
         self.target()
 
 
-def make_device(serial: str, state: str = "device") -> DeviceInfo:
+def make_device(serial: str, state: str = "device", transport: str | None = None) -> DeviceInfo:
     return DeviceInfo(
         serial=serial,
         display_name=serial,
-        transport="usb",
+        transport=transport or ("tcp" if ":" in serial else "usb"),
         state=state,
         model="Pixel",
         product="pixel",
@@ -530,6 +530,49 @@ def test_connect_tcp_defaults_to_5555_when_port_is_omitted(monkeypatch) -> None:
     assert controller.devices == [device]
 
 
+def test_connect_tcp_selects_connected_tcp_device_when_usb_was_selected(monkeypatch) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    tcp_device = make_device("192.168.1.111:5555")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.status.active_device_serial = usb_device.serial
+    controller.connect_var.set(tcp_device.serial)
+    captured: dict[str, object] = {}
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(gui, "connect_device", lambda target: f"connected to {target}\n")
+    monkeypatch.setattr(gui, "list_devices", lambda: [usb_device, tcp_device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == tcp_device.serial
+
+
+def test_select_device_by_serial_preserves_active_stream_target() -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    tcp_device = make_device("192.168.1.111:5555")
+    controller.devices = [usb_device, tcp_device]
+    controller.status.stream_state = "streaming"
+    controller.status.active_device_serial = usb_device.serial
+
+    selected = gui.LogcatToolGUI._select_device_by_serial(controller, tcp_device.serial)
+
+    assert selected is True
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == usb_device.serial
+
+
 def test_export_entries_warns_for_empty_logs_without_file_dialog(monkeypatch) -> None:
     controller = make_controller()
     warnings: list[tuple[str, str]] = []
@@ -672,8 +715,12 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh() -> None:
 def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")
+    tcp_device = make_device("192.168.1.111:5555")
     calls: list[tuple[str, object]] = []
 
+    controller.devices = [selected_device]
+    controller.device_var.set(gui.device_label(selected_device))
+    controller.status.active_device_serial = selected_device.serial
     controller._current_device = lambda: selected_device
     controller._run_background_task = lambda _message, action, on_success, _on_error: on_success(action())
     controller._update_status = lambda: calls.append(("status", None))
@@ -693,7 +740,7 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
     monkeypatch.setattr(gui, "get_device_route_ip", fake_get_device_route_ip)
     monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
     monkeypatch.setattr(gui, "connect_device", fake_connect_device)
-    monkeypatch.setattr(gui, "list_devices", lambda: [])
+    monkeypatch.setattr(gui, "list_devices", lambda: [selected_device, tcp_device])
 
     gui.LogcatToolGUI.enable_wireless_adb(controller)
 
@@ -704,6 +751,8 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
         ("connect", ("192.168.1.111:5555", 3, 1.0)),
     ]
     assert controller.connect_var.get() == "192.168.1.111:5555"
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == tcp_device.serial
     assert controller.status.last_error == "connected to 192.168.1.111:5555"
 
 

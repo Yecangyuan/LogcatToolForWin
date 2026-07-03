@@ -47,4 +47,6 @@ def parse_devices_output(output: str) -> list[DeviceInfo]:
 
 
 def device_label(device: DeviceInfo) -> str:
+    if device.display_name != device.serial:
+        return f"{device.display_name} [{device.transport}] ({device.serial})"
     return f"{device.display_name} [{device.transport}]"

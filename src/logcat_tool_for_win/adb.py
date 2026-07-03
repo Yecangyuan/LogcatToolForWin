@@ -111,6 +111,7 @@ def parse_route_source_ip(output: str) -> str:
 
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
     _suppress_windows_error_dialogs()
+    adb_path = resolve_adb_path()
     run_kwargs = {
         "capture_output": True,
         "stdin": subprocess.DEVNULL,
@@ -120,10 +121,19 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
     if os.name == "nt":
         run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-    result = subprocess.run(
-        [str(resolve_adb_path()), *args],
-        **run_kwargs,
-    )
+    try:
+        result = subprocess.run(
+            [str(adb_path), *args],
+            **run_kwargs,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ADBCommandError(f"ADB 命令超时（{timeout:g} 秒）：{' '.join(args)}") from exc
+    except FileNotFoundError as exc:
+        raise ADBCommandError(f"未找到 adb：{adb_path}") from exc
+    except PermissionError as exc:
+        raise ADBCommandError(f"无法执行 adb，请检查权限：{adb_path}") from exc
+    except OSError as exc:
+        raise ADBCommandError(f"无法启动 adb：{exc}") from exc
     if result.returncode != 0:
         message = (
             result.stderr.strip()

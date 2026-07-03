@@ -231,6 +231,48 @@ def test_run_adb_raises_adb_command_error_on_non_zero_exit(
         run_adb(["version"])
 
 
+def test_run_adb_reports_missing_adb_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/missing/adb.exe"))
+
+    def raise_missing(*args, **kwargs):
+        raise FileNotFoundError("missing")
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", raise_missing)
+
+    with pytest.raises(ADBCommandError, match="未找到 adb：/missing/adb.exe"):
+        run_adb(["version"])
+
+
+def test_run_adb_reports_permission_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+
+    def raise_permission(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", raise_permission)
+
+    with pytest.raises(ADBCommandError, match="无法执行 adb，请检查权限：/adb.exe"):
+        run_adb(["version"])
+
+
+def test_run_adb_reports_timeout_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+
+    def raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["adb", "devices"], timeout=2.0)
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", raise_timeout)
+
+    with pytest.raises(ADBCommandError, match=r"ADB 命令超时（2 秒）：devices"):
+        run_adb(["devices"], timeout=2.0)
+
+
 def test_run_adb_suppresses_windows_error_dialogs_before_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

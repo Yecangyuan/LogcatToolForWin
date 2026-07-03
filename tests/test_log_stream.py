@@ -24,6 +24,27 @@ class FakePopen:
         return self.returncode
 
 
+class StubbornPopen:
+    def __init__(self) -> None:
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO("")
+        self.terminated = False
+        self.killed = False
+        self.wait_timeouts: list[float | None] = []
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_timeouts.append(timeout)
+        if not self.killed:
+            raise subprocess.TimeoutExpired(cmd=["adb", "logcat"], timeout=timeout)
+        return 0
+
+
 class RaisingFactory:
     def __call__(self, *args, **kwargs):
         raise RuntimeError("launch failed")
@@ -125,6 +146,19 @@ def test_session_does_not_inherit_invalid_gui_stdin() -> None:
     session.join()
 
     assert captured_kwargs["stdin"] == subprocess.DEVNULL
+
+
+def test_session_stop_kills_process_when_terminate_times_out() -> None:
+    events: queue.Queue = queue.Queue()
+    process = StubbornPopen()
+    session = LogcatSession(["adb", "logcat"], events, lambda *args, **kwargs: process)
+
+    session.start()
+    session.stop()
+
+    assert process.terminated is True
+    assert process.killed is True
+    assert process.wait_timeouts == [5, 5]
 
 
 def test_session_drains_stderr_while_stdout_is_still_active() -> None:

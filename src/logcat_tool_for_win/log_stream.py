@@ -89,7 +89,11 @@ class LogcatSession:
         if self.process is None:
             return
         self.process.terminate()
-        self.process.wait(timeout=5)
+        try:
+            self.process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=5)
 
     def join(self) -> None:
         if self.worker is not None:

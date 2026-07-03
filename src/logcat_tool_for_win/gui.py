@@ -53,6 +53,7 @@ from logcat_tool_for_win.presets import load_presets, load_state, save_preset, s
 
 MAX_RECONNECT_ATTEMPTS = 3
 RECONNECT_DELAY_MS = 2_000
+MAX_EVENTS_PER_TICK = 500
 T = TypeVar("T")
 
 BG = "#0F172A"
@@ -838,11 +839,16 @@ class LogcatToolGUI:
 
     def _poll_stream(self) -> None:
         updated = False
-        while True:
+        full_render_required = False
+        new_visible_entries: list[LogEntry] = []
+        processed = 0
+
+        while processed < MAX_EVENTS_PER_TICK:
             try:
                 event = self.events.get_nowait()
             except queue.Empty:
                 break
+            processed += 1
 
             if event.kind == "line" and event.entry is not None:
                 if self.manual_stop or self.status.stream_state != "streaming":
@@ -851,7 +857,10 @@ class LogcatToolGUI:
                 if self.status.reconnect_attempt:
                     self.status.reconnect_attempt = 0
                     self.status.last_error = ""
-                self._append_entry(event.entry)
+                visible_entry, entry_full_render_required = self._append_entry(event.entry)
+                if visible_entry is not None:
+                    new_visible_entries.append(visible_entry)
+                full_render_required = full_render_required or entry_full_render_required
             elif event.kind == "stderr":
                 if self.manual_stop or self.status.stream_state not in {"streaming", "reconnecting"}:
                     continue
@@ -862,13 +871,17 @@ class LogcatToolGUI:
                     self._schedule_reconnect()
 
         if updated:
-            self._render_visible()
+            if full_render_required:
+                self._render_visible()
+            else:
+                self._append_visible_entries(new_visible_entries)
 
         self.status.queue_depth = self.events.qsize()
         self._update_status()
-        self.root.after(QUEUE_DRAIN_MS, self._poll_stream)
+        delay = 0 if self.status.queue_depth else QUEUE_DRAIN_MS
+        self.root.after(delay, self._poll_stream)
 
-    def _append_entry(self, entry: LogEntry) -> None:
+    def _append_entry(self, entry: LogEntry) -> tuple[Optional[LogEntry], bool]:
         self.raw_lines.append(entry)
         filters = self._current_filters()
         rules = self._current_highlight_rules()
@@ -877,7 +890,13 @@ class LogcatToolGUI:
         entry.matches_filters = entry_matches(entry, filters)
         entry.highlight_keys = match_highlight_rules(entry, rules)
         if entry.matches_filters or not filters.match_only:
+            full_render_required = (
+                self.visible_lines.maxlen is not None
+                and len(self.visible_lines) >= self.visible_lines.maxlen
+            )
             self.visible_lines.append(entry)
+            return entry, full_render_required
+        return None, False
 
     def _refresh_visible_entries(self) -> None:
         filters = self._current_filters()
@@ -898,31 +917,43 @@ class LogcatToolGUI:
         self.text.delete("1.0", tk.END)
 
         for entry in self.visible_lines:
-            line_start = self.text.index(tk.END)
-            self.text.insert(tk.END, entry.raw_line + "\n", entry.level)
-            line_end = self.text.index(tk.END)
-
-            if not entry.matches_filters and not self.filters.match_only:
-                self.text.tag_add("filtered-out", line_start, line_end)
-
-            for rule_name in entry.highlight_keys:
-                rule = rule_map.get(rule_name)
-                if rule is None:
-                    continue
-                tag_name = build_highlight_text_tag(rule_name)
-                self.text.tag_config(
-                    tag_name,
-                    foreground=rule.foreground,
-                    background=rule.background or "",
-                )
-                self.text.tag_add(tag_name, line_start, line_end)
+            self._insert_visible_entry(entry, rule_map)
 
         self.text.configure(state=tk.DISABLED)
-        self.summary_var.set(
-            build_summary_text(len(self.raw_lines), len(self.visible_lines), self.status.stream_state)
-        )
+        self._update_summary()
         if self.auto_scroll_var.get():
             self.text.see(tk.END)
+
+    def _append_visible_entries(self, entries: list[LogEntry]) -> None:
+        if entries:
+            rule_map = {rule.name: rule for rule in self.highlight_rules}
+            self.text.configure(state=tk.NORMAL)
+            for entry in entries:
+                self._insert_visible_entry(entry, rule_map)
+            self.text.configure(state=tk.DISABLED)
+            if self.auto_scroll_var.get():
+                self.text.see(tk.END)
+        self._update_summary()
+
+    def _insert_visible_entry(self, entry: LogEntry, rule_map: dict[str, HighlightRule]) -> None:
+        line_start = self.text.index(tk.END)
+        self.text.insert(tk.END, entry.raw_line + "\n", entry.level)
+        line_end = self.text.index(tk.END)
+
+        if not entry.matches_filters and not self.filters.match_only:
+            self.text.tag_add("filtered-out", line_start, line_end)
+
+        for rule_name in entry.highlight_keys:
+            rule = rule_map.get(rule_name)
+            if rule is None:
+                continue
+            tag_name = build_highlight_text_tag(rule_name)
+            self.text.tag_config(
+                tag_name,
+                foreground=rule.foreground,
+                background=rule.background or "",
+            )
+            self.text.tag_add(tag_name, line_start, line_end)
 
     def _sync_selected_device(self) -> None:
         try:
@@ -965,6 +996,9 @@ class LogcatToolGUI:
 
     def _update_status(self) -> None:
         self.status_var.set(format_status_text(self.status))
+        self._update_summary()
+
+    def _update_summary(self) -> None:
         self.summary_var.set(
             build_summary_text(len(self.raw_lines), len(self.visible_lines), self.status.stream_state)
         )

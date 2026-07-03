@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import logcat_tool_for_win.gui as gui
 from logcat_tool_for_win.models import AppStatus, DeviceInfo, FilterState, LogEntry, StreamEvent
 
+DUMMY_TK = SimpleNamespace(NORMAL="normal", DISABLED="disabled", END="end")
+
 
 def test_build_summary_text_reports_total_and_visible_counts() -> None:
     assert gui.build_summary_text(120, 24, "streaming") == "总行数：120 | 可见：24 | 状态：采集中"
@@ -62,6 +64,40 @@ class DummyRoot:
         self.after_calls.append((delay, callback))
 
 
+class DummyText:
+    def __init__(self) -> None:
+        self.configure_calls: list[dict[str, object]] = []
+        self.delete_calls: list[tuple[object, object]] = []
+        self.insert_calls: list[tuple[object, str, object]] = []
+        self.tag_add_calls: list[tuple[str, object, object]] = []
+        self.tag_config_calls: list[tuple[str, dict[str, object]]] = []
+        self.see_calls: list[object] = []
+        self.next_line = 1
+
+    def configure(self, **kwargs: object) -> None:
+        self.configure_calls.append(kwargs)
+
+    def delete(self, start: object, end: object) -> None:
+        self.delete_calls.append((start, end))
+        self.next_line = 1
+
+    def index(self, _index: object) -> str:
+        return f"{self.next_line}.0"
+
+    def insert(self, index: object, text: str, tag: object) -> None:
+        self.insert_calls.append((index, text, tag))
+        self.next_line += text.count("\n")
+
+    def tag_add(self, tag: str, start: object, end: object) -> None:
+        self.tag_add_calls.append((tag, start, end))
+
+    def tag_config(self, tag: str, **kwargs: object) -> None:
+        self.tag_config_calls.append((tag, kwargs))
+
+    def see(self, index: object) -> None:
+        self.see_calls.append(index)
+
+
 class FailingSession:
     def stop(self) -> None:
         raise RuntimeError("stop failed")
@@ -102,6 +138,8 @@ def make_entry(message: str = "ANR detected") -> LogEntry:
 
 
 def make_controller() -> gui.LogcatToolGUI:
+    if gui.tk is None:
+        gui.tk = DUMMY_TK
     controller = gui.LogcatToolGUI.__new__(gui.LogcatToolGUI)
     controller.status = AppStatus()
     controller.manual_stop = False
@@ -111,12 +149,18 @@ def make_controller() -> gui.LogcatToolGUI:
     controller.summary_var = DummyVar("")
     controller.device_var = DummyVar("")
     controller.connect_var = DummyVar("")
+    controller.level_var = DummyVar("V")
+    controller.tag_var = DummyVar("")
+    controller.keyword_var = DummyVar("")
+    controller.highlight_var = DummyVar("")
     controller.device_combo = DummyCombo()
     controller.raw_lines = deque()
     controller.visible_lines = deque()
     controller.filters = FilterState()
     controller.highlight_rules = []
     controller.auto_scroll_var = DummyVar(False)
+    controller.match_only_var = DummyVar(False)
+    controller.text = DummyText()
     controller.session = None
     controller.devices = []
     return controller
@@ -163,6 +207,59 @@ def test_poll_stream_ignores_late_line_events_after_stop() -> None:
     assert appended == []
     assert controller.status.queue_depth == 0
     assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+
+
+def test_poll_stream_appends_new_visible_lines_without_full_redraw() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("first")))
+    full_renders: list[object] = []
+    controller._render_visible = lambda: full_renders.append(True)
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    text = controller.text
+    assert isinstance(text, DummyText)
+    assert full_renders == []
+    assert text.delete_calls == []
+    assert text.insert_calls == [
+        (gui.tk.END, "06-18 10:00:00.000 E ActivityManager: first\n", "E")
+    ]
+    assert controller.summary_var.get() == "总行数：1 | 可见：1 | 状态：采集中"
+    assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+
+
+def test_poll_stream_full_renders_when_visible_log_cap_rolls_over() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    controller.visible_lines = deque([make_entry("old")], maxlen=1)
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("new")))
+    full_renders: list[object] = []
+    controller._render_visible = lambda: full_renders.append(True)
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert full_renders == [True]
+    assert [entry.message for entry in controller.visible_lines] == ["new"]
+
+
+def test_poll_stream_limits_events_per_tick_and_reschedules_immediately() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    for index in range(gui.MAX_EVENTS_PER_TICK + 1):
+        controller.events.put(StreamEvent(kind="line", entry=make_entry(f"line {index}")))
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    text = controller.text
+    assert isinstance(text, DummyText)
+    assert len(controller.raw_lines) == gui.MAX_EVENTS_PER_TICK
+    assert len(text.insert_calls) == gui.MAX_EVENTS_PER_TICK
+    assert controller.status.queue_depth == 1
+    assert controller.root.after_calls[0][0] == 0
 
 
 def test_stop_stream_surfaces_stop_failures_instead_of_claiming_idle() -> None:

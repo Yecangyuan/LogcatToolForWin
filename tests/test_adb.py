@@ -12,6 +12,7 @@ from logcat_tool_for_win.adb import (
     enable_tcpip,
     extract_tcp_port,
     get_device_route_ip,
+    normalize_tcp_target,
     parse_route_source_ip,
     resolve_adb_path,
     run_adb,
@@ -25,8 +26,16 @@ def test_validate_tcp_target_accepts_ipv4_target() -> None:
     assert validate_tcp_target("192.168.0.8:5555") == "192.168.0.8:5555"
 
 
+def test_normalize_tcp_target_adds_default_port_for_ipv4_target() -> None:
+    assert normalize_tcp_target("192.168.0.8") == "192.168.0.8:5555"
+
+
 def test_extract_tcp_port_uses_default_for_blank_target() -> None:
     assert extract_tcp_port("") == DEFAULT_TCP_PORT
+
+
+def test_extract_tcp_port_uses_default_for_target_without_port() -> None:
+    assert extract_tcp_port("192.168.0.8") == DEFAULT_TCP_PORT
 
 
 def test_extract_tcp_port_reads_port_from_target() -> None:
@@ -99,6 +108,27 @@ def test_connect_device_returns_stdout_string(
     monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
 
     assert connect_device("192.168.0.8:5555") == "connected to 192.168.0.8:5555\n"
+
+
+def test_connect_device_uses_default_port_for_ipv4_target_without_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run_adb(args: list[str], timeout: float = 10.0):
+        calls.append(args)
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", fake_run_adb)
+
+    assert connect_device("192.168.0.8") == "connected to 192.168.0.8:5555\n"
+    assert calls == [["connect", "192.168.0.8:5555"]]
 
 
 def test_connect_device_retries_transient_adb_errors(

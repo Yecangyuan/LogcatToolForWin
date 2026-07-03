@@ -50,14 +50,33 @@ def resolve_adb_path() -> Path:
 
 
 def validate_tcp_target(target: str) -> str:
-    host, port_text = target.rsplit(":", 1)
-    ipaddress.ip_address(host)
+    stripped = target.strip()
+    if ":" not in stripped:
+        raise ValueError("请输入 IP:端口 格式的 TCP 目标。")
 
-    port = int(port_text)
+    host, port_text = stripped.rsplit(":", 1)
+    try:
+        ipaddress.ip_address(host)
+    except ValueError as exc:
+        raise ValueError(f"无效的 TCP IP 地址：{host}") from exc
+
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise ValueError(f"无效的 TCP 端口：{port_text}") from exc
     if port < 1 or port > 65535:
         raise ValueError(f"无效的 TCP 端口：{port_text}")
 
-    return target
+    return f"{host}:{port}"
+
+
+def normalize_tcp_target(target: str, default_port: int = DEFAULT_TCP_PORT) -> str:
+    stripped = target.strip()
+    if not stripped:
+        raise ValueError("请输入 TCP 目标地址。")
+    if ":" in stripped:
+        return validate_tcp_target(stripped)
+    return validate_tcp_target(f"{stripped}:{validate_tcp_port(default_port)}")
 
 
 def validate_tcp_port(port: int) -> int:
@@ -70,7 +89,7 @@ def extract_tcp_port(target: str, default: int = DEFAULT_TCP_PORT) -> int:
     stripped = target.strip()
     if not stripped:
         return validate_tcp_port(default)
-    return int(validate_tcp_target(stripped).rsplit(":", 1)[1])
+    return int(normalize_tcp_target(stripped, default).rsplit(":", 1)[1])
 
 
 def parse_route_source_ip(output: str) -> str:
@@ -121,7 +140,7 @@ def list_devices() -> list[DeviceInfo]:
 
 
 def connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
-    validated_target = validate_tcp_target(target)
+    validated_target = normalize_tcp_target(target)
     last_error: Optional[ADBCommandError] = None
     for attempt in range(max(1, attempts)):
         if attempt and delay_seconds > 0:

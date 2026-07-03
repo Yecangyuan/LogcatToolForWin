@@ -85,10 +85,10 @@ To produce the same output locally that CI packages on Windows:
 - `build-windows` runs on Windows after `test` passes.
 - The Windows job downloads the official Android platform-tools ZIP from Google, stages it under `src/logcat_tool_for_win/resources/platform-tools/`, builds the self-contained app with PyInstaller, packages the portable ZIP, and uploads `artifacts/logcat-tool-for-win.zip`.
 - `build-windows-legacy` runs a best-effort legacy build on `windows-2022` with `Python 3.8`, embeds Android platform-tools `r28.0.2`, and publishes `artifacts-legacy/logcat-tool-for-win-legacy-win7.zip`.
-- Pushing a tag that matches `v*` such as `v0.1.0` also publishes `artifacts/logcat-tool-for-win.zip` to the matching GitHub Release as an asset.
-- The same tag build also publishes `logcat-tool-for-win-legacy-win7.zip` to the matching GitHub Release as a separate asset.
+- Pushing to `main` publishes both Windows ZIPs to a rolling `latest` GitHub Release, replacing the existing assets.
+- Pushing a tag that matches `v*` such as `v0.1.0` publishes both Windows ZIPs to the matching versioned GitHub Release as assets.
 
-This workflow uploads build artifacts for every qualifying run. For `v*` tags, it also creates or updates the matching GitHub Release assets.
+This workflow uploads build artifacts for every qualifying run. For `main` pushes and `v*` tags, it also creates or updates the matching GitHub Release assets.
 
 ## Troubleshooting
 

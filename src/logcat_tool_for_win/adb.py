@@ -60,6 +60,7 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
     _suppress_windows_error_dialogs()
     run_kwargs = {
         "capture_output": True,
+        "stdin": subprocess.DEVNULL,
         "text": True,
         "timeout": timeout,
     }

@@ -50,6 +50,7 @@ class LogcatSession:
     def start(self) -> None:
         self.process = self.popen_factory(
             self.command,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

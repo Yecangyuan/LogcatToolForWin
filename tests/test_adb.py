@@ -102,3 +102,26 @@ def test_run_adb_raises_adb_command_error_on_non_zero_exit(
 
     with pytest.raises(ADBCommandError, match="failed"):
         run_adb(["version"])
+
+
+def test_run_adb_suppresses_windows_error_dialogs_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "version"],
+        returncode=0,
+        stdout="Android Debug Bridge version\n",
+        stderr="",
+    )
+    calls: list[str] = []
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", lambda *args, **kwargs: completed)
+    monkeypatch.setattr(
+        "logcat_tool_for_win.adb._suppress_windows_error_dialogs",
+        lambda: calls.append("suppressed"),
+    )
+
+    run_adb(["version"])
+
+    assert calls == ["suppressed"]

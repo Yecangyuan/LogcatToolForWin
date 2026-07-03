@@ -4,7 +4,7 @@ Windows GUI Android `logcat` viewer with bundled `adb`, multi-device switching, 
 
 ## Features
 
-- Windows-first Tkinter desktop app with a single-click portable ZIP release
+- Windows-first Simplified Chinese Tkinter desktop app with a single-click portable ZIP release
 - Bundled `adb` support for packaged builds
 - USB device discovery plus TCP `adb connect` support
 - One active realtime log stream with fast device switching
@@ -84,7 +84,7 @@ To produce the same output locally that CI packages on Windows:
 - `test` runs on Ubuntu and performs install, lint, pytest, and `python -m build`.
 - `build-windows` runs on Windows after `test` passes.
 - The Windows job downloads the official Android platform-tools ZIP from Google, stages it under `src/logcat_tool_for_win/resources/platform-tools/`, builds the self-contained app with PyInstaller, packages the portable ZIP, and uploads `artifacts/logcat-tool-for-win.zip`.
-- `build-windows-legacy` runs a best-effort legacy build on `windows-2022` with `Python 3.8` and publishes `artifacts-legacy/logcat-tool-for-win-legacy-win7.zip`.
+- `build-windows-legacy` runs a best-effort legacy build on `windows-2022` with `Python 3.8`, embeds Android platform-tools `r28.0.2`, and publishes `artifacts-legacy/logcat-tool-for-win-legacy-win7.zip`.
 - Pushing a tag that matches `v*` such as `v0.1.0` also publishes `artifacts/logcat-tool-for-win.zip` to the matching GitHub Release as an asset.
 - The same tag build also publishes `logcat-tool-for-win-legacy-win7.zip` to the matching GitHub Release as a separate asset.
 
@@ -99,7 +99,7 @@ This workflow uploads build artifacts for every qualifying run. For `v*` tags, i
 No devices appear:
 - Verify the device is visible in a normal `adb devices -l` session.
 - Accept any device authorization prompt on the Android device.
-- Use the app's `Refresh` button after connecting USB or a TCP target.
+- Use the app's `刷新` button after connecting USB or a TCP target.
 
 TCP connect fails:
 - Enter targets as `IP:port`.
@@ -118,4 +118,5 @@ Tkinter import errors:
 
 Running on Windows 7 or Windows 8.0:
 - Use the `logcat-tool-for-win-legacy-win7.zip` asset built from the `Python 3.8` legacy workflow.
+- The legacy executable embeds Android platform-tools `r28.0.2` instead of the latest `adb`.
 - This legacy build is best-effort only until it is validated on a real Windows 7 or Windows 8.0 machine.

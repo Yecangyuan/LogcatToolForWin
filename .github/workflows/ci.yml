@@ -113,12 +113,12 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .[dev]
 
-      - name: Download Android platform-tools
+      - name: Download legacy Android platform-tools
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path src\logcat_tool_for_win\resources | Out-Null
-          $zipPath = Join-Path $env:RUNNER_TEMP "platform-tools-latest-windows.zip"
-          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $zipPath
+          $zipPath = Join-Path $env:RUNNER_TEMP "platform-tools_r28.0.2-windows.zip"
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools_r28.0.2-windows.zip" -OutFile $zipPath
           Expand-Archive -Path $zipPath -DestinationPath src\logcat_tool_for_win\resources -Force
 
       - name: Build legacy app

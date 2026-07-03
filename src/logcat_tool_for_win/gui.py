@@ -809,6 +809,12 @@ class LogcatToolGUI:
         self._export_entries(list(self.raw_lines), "原始")
 
     def _export_entries(self, entries: list[LogEntry], label: str) -> None:
+        if not entries:
+            message = f"当前没有可导出的{label}日志。"
+            messagebox.showwarning("没有日志", message)
+            self.status.last_error = message
+            self._update_status()
+            return
         path = filedialog.asksaveasfilename(defaultextension=".txt")
         if not path:
             return

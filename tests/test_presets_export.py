@@ -95,5 +95,5 @@ def test_export_lines_writes_text_file_and_creates_parent_directories(tmp_path: 
 def test_export_lines_rejects_empty_exports(tmp_path: Path) -> None:
     output = tmp_path / "logs.txt"
 
-    with pytest.raises(ValueError, match="No log lines available to export."):
+    with pytest.raises(ValueError, match="没有可导出的日志。"):
         export_lines(output, [])

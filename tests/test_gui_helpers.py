@@ -54,6 +54,16 @@ class DummyVar:
         self.value = value
 
 
+class TriggeringVar(DummyVar):
+    def __init__(self, value: object, on_set) -> None:
+        super().__init__(value)
+        self.on_set = on_set
+
+    def set(self, value: object) -> None:
+        super().set(value)
+        self.on_set()
+
+
 class DummyCombo:
     def __init__(self) -> None:
         self.values: tuple[str, ...] = ()
@@ -150,6 +160,7 @@ def make_controller() -> gui.LogcatToolGUI:
     controller = gui.LogcatToolGUI.__new__(gui.LogcatToolGUI)
     controller.status = AppStatus()
     controller.manual_stop = False
+    controller._filter_refresh_suspended = False
     controller.events = queue.Queue()
     controller.root = DummyRoot()
     controller.status_var = DummyVar("")
@@ -161,6 +172,8 @@ def make_controller() -> gui.LogcatToolGUI:
     controller.keyword_var = DummyVar("")
     controller.highlight_var = DummyVar("")
     controller.device_combo = DummyCombo()
+    controller.preset_var = DummyVar("")
+    controller.named_presets = {}
     controller.raw_lines = deque()
     controller.visible_lines = deque()
     controller.filters = FilterState()
@@ -265,6 +278,43 @@ def test_poll_stream_reuses_filter_snapshot_for_line_batch() -> None:
     assert len(controller.visible_lines) == 3
     assert controller.filters is filters
     assert controller.highlight_rules is rules
+
+
+def test_load_named_preset_batches_filter_refreshes() -> None:
+    controller = make_controller()
+    refreshes: list[str] = []
+    controller.named_presets = {
+        "Errors": FilterState(
+            minimum_level="E",
+            tag_filters=("ActivityManager", "SystemUI"),
+            keyword="crash",
+            auto_scroll=False,
+            match_only=True,
+        )
+    }
+    controller.preset_var = DummyVar("Errors")
+
+    def refresh_visible_entries() -> None:
+        refreshes.append("refresh")
+
+    def trigger_filter_trace() -> None:
+        gui.LogcatToolGUI._handle_filter_trace(controller)
+
+    controller._refresh_visible_entries = refresh_visible_entries
+    controller.level_var = TriggeringVar("V", trigger_filter_trace)
+    controller.tag_var = TriggeringVar("", trigger_filter_trace)
+    controller.keyword_var = TriggeringVar("", trigger_filter_trace)
+    controller.auto_scroll_var = TriggeringVar(True, trigger_filter_trace)
+    controller.match_only_var = TriggeringVar(False, trigger_filter_trace)
+
+    gui.LogcatToolGUI.load_named_preset(controller)
+
+    assert refreshes == ["refresh"]
+    assert controller.level_var.get() == "E"
+    assert controller.tag_var.get() == "ActivityManager, SystemUI"
+    assert controller.keyword_var.get() == "crash"
+    assert controller.auto_scroll_var.get() is False
+    assert controller.match_only_var.get() is True
 
 
 def test_poll_stream_full_renders_when_visible_log_cap_rolls_over() -> None:

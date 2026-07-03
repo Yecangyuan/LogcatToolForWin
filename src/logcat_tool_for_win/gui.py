@@ -130,6 +130,7 @@ class LogcatToolGUI:
         self.status = AppStatus()
         self.manual_stop = True
         self.reconnect_target_serial = ""
+        self._filter_refresh_suspended = False
         self._filter_trace_ids: list[tuple[tk.Variable, str]] = []
 
         self.device_var = tk.StringVar()
@@ -444,6 +445,8 @@ class LogcatToolGUI:
             self._filter_trace_ids.append((variable, trace_id))
 
     def _handle_filter_trace(self, *_args: object) -> None:
+        if self._filter_refresh_suspended:
+            return
         self._refresh_visible_entries()
 
     def _run_background_task(
@@ -764,11 +767,16 @@ class LogcatToolGUI:
             messagebox.showwarning("预设不存在", f"未找到名为“{name}”的预设。")
             return
 
-        self.level_var.set(preset.minimum_level)
-        self.tag_var.set(", ".join(preset.tag_filters))
-        self.keyword_var.set(preset.keyword)
-        self.auto_scroll_var.set(preset.auto_scroll)
-        self.match_only_var.set(preset.match_only)
+        self._filter_refresh_suspended = True
+        try:
+            self.level_var.set(preset.minimum_level)
+            self.tag_var.set(", ".join(preset.tag_filters))
+            self.keyword_var.set(preset.keyword)
+            self.auto_scroll_var.set(preset.auto_scroll)
+            self.match_only_var.set(preset.match_only)
+        finally:
+            self._filter_refresh_suspended = False
+        self._refresh_visible_entries()
 
     def save_session_state(self) -> None:
         self.filters = self._current_filters()

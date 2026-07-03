@@ -4,7 +4,7 @@ from collections import deque
 import queue
 import threading
 from pathlib import Path
-from typing import Callable, Optional, TypeVar, Union
+from typing import Callable, Iterable, Optional, TypeVar, Union
 
 try:
     import tkinter as tk
@@ -969,6 +969,7 @@ class LogcatToolGUI:
         rule_map = {rule.name: rule for rule in self.highlight_rules}
         self.text.configure(state=tk.NORMAL)
         self.text.delete("1.0", tk.END)
+        self._configure_highlight_tags(rule_map, self.visible_lines)
 
         for entry in self.visible_lines:
             self._insert_visible_entry(entry, rule_map)
@@ -982,12 +983,32 @@ class LogcatToolGUI:
         if entries:
             rule_map = {rule.name: rule for rule in self.highlight_rules}
             self.text.configure(state=tk.NORMAL)
+            self._configure_highlight_tags(rule_map, entries)
             for entry in entries:
                 self._insert_visible_entry(entry, rule_map)
             self.text.configure(state=tk.DISABLED)
             if self.auto_scroll_var.get():
                 self.text.see(tk.END)
         self._update_summary()
+
+    def _configure_highlight_tags(
+        self,
+        rule_map: dict[str, HighlightRule],
+        entries: Iterable[LogEntry],
+    ) -> None:
+        used_rule_names = {
+            rule_name
+            for entry in entries
+            for rule_name in entry.highlight_keys
+            if rule_name in rule_map
+        }
+        for rule_name in sorted(used_rule_names):
+            rule = rule_map[rule_name]
+            self.text.tag_config(
+                build_highlight_text_tag(rule_name),
+                foreground=rule.foreground,
+                background=rule.background or "",
+            )
 
     def _insert_visible_entry(self, entry: LogEntry, rule_map: dict[str, HighlightRule]) -> None:
         line_start = self.text.index(tk.END)
@@ -998,15 +1019,9 @@ class LogcatToolGUI:
             self.text.tag_add("filtered-out", line_start, line_end)
 
         for rule_name in entry.highlight_keys:
-            rule = rule_map.get(rule_name)
-            if rule is None:
+            if rule_name not in rule_map:
                 continue
             tag_name = build_highlight_text_tag(rule_name)
-            self.text.tag_config(
-                tag_name,
-                foreground=rule.foreground,
-                background=rule.background or "",
-            )
             self.text.tag_add(tag_name, line_start, line_end)
 
     def _sync_selected_device(self) -> None:

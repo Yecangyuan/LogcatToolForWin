@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections import deque
 import queue
+import threading
 from pathlib import Path
-from typing import Optional, Union
+from typing import Callable, Optional, TypeVar, Union
 
 try:
     import tkinter as tk
@@ -52,6 +53,7 @@ from logcat_tool_for_win.presets import load_presets, load_state, save_preset, s
 
 MAX_RECONNECT_ATTEMPTS = 3
 RECONNECT_DELAY_MS = 2_000
+T = TypeVar("T")
 
 BG = "#0F172A"
 SURFACE = "#1E293B"
@@ -148,7 +150,7 @@ class LogcatToolGUI:
         self._bind_shortcuts()
         self._bind_filter_updates()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.refresh_devices()
+        self.root.after(0, self.refresh_devices_async)
         self._refresh_visible_entries()
         self.root.after(QUEUE_DRAIN_MS, self._poll_stream)
 
@@ -215,7 +217,7 @@ class LogcatToolGUI:
         self.device_combo.pack(side=tk.LEFT, padx=(0, 8))
         self.device_combo.bind("<<ComboboxSelected>>", lambda _event: self._sync_selected_device())
 
-        ttk.Button(toolbar, text="刷新", style="App.TButton", command=self.refresh_devices).pack(
+        ttk.Button(toolbar, text="刷新", style="App.TButton", command=self.refresh_devices_async).pack(
             side=tk.LEFT, padx=4
         )
         self.connect_entry = ttk.Entry(
@@ -426,7 +428,7 @@ class LogcatToolGUI:
         self.root.bind("<Control-s>", lambda _event: self.save_session_state())
         self.root.bind("<Control-e>", lambda _event: self.export_visible())
         self.root.bind("<Control-Shift-E>", lambda _event: self.export_raw())
-        self.root.bind("<F5>", lambda _event: self.refresh_devices())
+        self.root.bind("<F5>", lambda _event: self.refresh_devices_async())
 
     def _bind_filter_updates(self) -> None:
         for variable in (
@@ -443,6 +445,26 @@ class LogcatToolGUI:
     def _handle_filter_trace(self, *_args: object) -> None:
         self._refresh_visible_entries()
 
+    def _run_background_task(
+        self,
+        pending_message: str,
+        action: Callable[[], T],
+        on_success: Callable[[T], None],
+        on_error: Callable[[Exception], None],
+    ) -> None:
+        self.status.last_error = pending_message
+        self._update_status()
+
+        def worker() -> None:
+            try:
+                result = action()
+            except Exception as exc:
+                self.root.after(0, lambda error=exc: on_error(error))
+            else:
+                self.root.after(0, lambda value=result: on_success(value))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _refresh_preset_choices(self) -> None:
         names = sorted(self.named_presets)
         self.preset_combo["values"] = names
@@ -452,32 +474,50 @@ class LogcatToolGUI:
     def focus_keyword(self) -> None:
         self.keyword_entry.focus_set()
 
-    def refresh_devices(self) -> None:
+    def _apply_devices(self, devices: list[DeviceInfo]) -> None:
         current_label = self.device_var.get()
         preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
-        try:
-            self.devices = list_devices()
-            labels = [device_label(device) for device in self.devices]
-            self.device_combo["values"] = labels
-            if current_label in labels:
-                self.device_var.set(current_label)
-            elif labels:
-                self.device_var.set(labels[0])
-            else:
-                self.device_var.set("")
-            self.status.adb_ready = True
-            self.status.last_error = ""
-            if not preserve_stream_target:
-                self._sync_selected_device()
-        except Exception as exc:
-            self.devices = []
-            self.device_combo["values"] = ()
+        self.devices = devices
+        labels = [device_label(device) for device in self.devices]
+        self.device_combo["values"] = labels
+        if current_label in labels:
+            self.device_var.set(current_label)
+        elif labels:
+            self.device_var.set(labels[0])
+        else:
             self.device_var.set("")
-            self.status.adb_ready = False
-            self.status.last_error = str(exc)
-            if not preserve_stream_target:
-                self.status.active_device_serial = ""
+        self.status.adb_ready = True
+        self.status.last_error = ""
+        if not preserve_stream_target:
+            self._sync_selected_device()
         self._update_status()
+
+    def _handle_refresh_devices_error(self, exc: Exception) -> None:
+        preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
+        self.devices = []
+        self.device_combo["values"] = ()
+        self.device_var.set("")
+        self.status.adb_ready = False
+        self.status.last_error = str(exc)
+        if not preserve_stream_target:
+            self.status.active_device_serial = ""
+        self._update_status()
+
+    def refresh_devices(self) -> None:
+        try:
+            devices = list_devices()
+        except Exception as exc:
+            self._handle_refresh_devices_error(exc)
+        else:
+            self._apply_devices(devices)
+
+    def refresh_devices_async(self) -> None:
+        self._run_background_task(
+            "正在刷新设备...",
+            list_devices,
+            self._apply_devices,
+            self._handle_refresh_devices_error,
+        )
 
     def connect_tcp(self) -> None:
         target = self.connect_var.get().strip()
@@ -485,14 +525,26 @@ class LogcatToolGUI:
             messagebox.showwarning("需要目标地址", "请输入 IP:端口 格式的 TCP 目标。")
             return
 
-        try:
-            message = connect_device(target).strip()
-            self.status.last_error = message
-            self.refresh_devices()
-        except Exception as exc:
-            messagebox.showerror("连接失败", str(exc))
-            self.status.last_error = str(exc)
-            self._update_status()
+        def action() -> tuple[str, list[DeviceInfo]]:
+            return connect_device(target).strip(), list_devices()
+
+        self._run_background_task(
+            f"正在连接 {target}...",
+            action,
+            self._handle_connect_tcp_success,
+            self._handle_connect_tcp_error,
+        )
+
+    def _handle_connect_tcp_success(self, result: tuple[str, list[DeviceInfo]]) -> None:
+        message, devices = result
+        self._apply_devices(devices)
+        self.status.last_error = message
+        self._update_status()
+
+    def _handle_connect_tcp_error(self, exc: Exception) -> None:
+        messagebox.showerror("连接失败", str(exc))
+        self.status.last_error = str(exc)
+        self._update_status()
 
     def enable_wireless_adb(self) -> None:
         try:
@@ -517,27 +569,43 @@ class LogcatToolGUI:
             messagebox.showwarning("TCP 端口无效", str(exc))
             return
 
-        try:
-            route_ip = ""
-            try:
-                route_ip = get_device_route_ip(device.serial)
-            except Exception:
-                route_ip = ""
+        self._run_background_task(
+            f"正在为 {device.serial} 开启无线 ADB...",
+            lambda: self._prepare_wireless_adb(device.serial, port),
+            self._handle_wireless_adb_success,
+            self._handle_wireless_adb_error,
+        )
 
-            tcpip_message = enable_tcpip(device.serial, port).strip()
-            if route_ip:
-                target = f"{route_ip}:{port}"
-                self.connect_var.set(target)
-                connect_message = connect_device(target, attempts=3, delay_seconds=1.0).strip()
-                self.status.last_error = connect_message or f"已连接 {target}"
-            else:
-                prefix = tcpip_message or "已开启无线 ADB。"
-                self.status.last_error = f"{prefix} 请在连接框输入手机 IP:{port} 后点连接。"
-            self.refresh_devices()
-        except Exception as exc:
-            messagebox.showerror("开启无线失败", str(exc))
-            self.status.last_error = str(exc)
-            self._update_status()
+    def _prepare_wireless_adb(self, serial: str, port: int) -> tuple[str, str, list[DeviceInfo]]:
+        route_ip = ""
+        try:
+            route_ip = get_device_route_ip(serial)
+        except Exception:
+            route_ip = ""
+
+        tcpip_message = enable_tcpip(serial, port).strip()
+        target = ""
+        if route_ip:
+            target = f"{route_ip}:{port}"
+            connect_message = connect_device(target, attempts=3, delay_seconds=1.0).strip()
+            message = connect_message or f"已连接 {target}"
+        else:
+            prefix = tcpip_message or "已开启无线 ADB。"
+            message = f"{prefix} 请在连接框输入手机 IP:{port} 后点连接。"
+        return target, message, list_devices()
+
+    def _handle_wireless_adb_success(self, result: tuple[str, str, list[DeviceInfo]]) -> None:
+        target, message, devices = result
+        if target:
+            self.connect_var.set(target)
+        self._apply_devices(devices)
+        self.status.last_error = message
+        self._update_status()
+
+    def _handle_wireless_adb_error(self, exc: Exception) -> None:
+        messagebox.showerror("开启无线失败", str(exc))
+        self.status.last_error = str(exc)
+        self._update_status()
 
     def _current_device(self) -> DeviceInfo:
         current = self.device_var.get()
@@ -628,26 +696,48 @@ class LogcatToolGUI:
     def clear_device_logcat(self) -> None:
         try:
             device = self._current_device()
-            clear_logcat(device.serial)
-            self.status.last_error = "已清空设备 logcat。"
-            self._update_status()
         except ValueError as exc:
             messagebox.showwarning("需要选择设备", str(exc))
-        except Exception as exc:
-            messagebox.showerror("清空失败", str(exc))
-            self.status.last_error = str(exc)
-            self._update_status()
+            return
+
+        self._run_background_task(
+            f"正在清空 {device.serial} 的设备日志...",
+            lambda: clear_logcat(device.serial),
+            lambda _result: self._handle_clear_logcat_success(),
+            self._handle_clear_logcat_error,
+        )
+
+    def _handle_clear_logcat_success(self) -> None:
+        self.status.last_error = "已清空设备 logcat。"
+        self._update_status()
+
+    def _handle_clear_logcat_error(self, exc: Exception) -> None:
+        messagebox.showerror("清空失败", str(exc))
+        self.status.last_error = str(exc)
+        self._update_status()
 
     def restart_adb(self) -> None:
         self.stop_stream()
-        try:
-            restart_server()
-            self.status.last_error = ""
-            self.refresh_devices()
-        except Exception as exc:
-            messagebox.showerror("ADB 重启失败", str(exc))
-            self.status.last_error = str(exc)
-            self._update_status()
+        self._run_background_task(
+            "正在重启 ADB...",
+            self._restart_adb_and_list_devices,
+            self._handle_restart_adb_success,
+            self._handle_restart_adb_error,
+        )
+
+    def _restart_adb_and_list_devices(self) -> list[DeviceInfo]:
+        restart_server()
+        return list_devices()
+
+    def _handle_restart_adb_success(self, devices: list[DeviceInfo]) -> None:
+        self._apply_devices(devices)
+        self.status.last_error = ""
+        self._update_status()
+
+    def _handle_restart_adb_error(self, exc: Exception) -> None:
+        messagebox.showerror("ADB 重启失败", str(exc))
+        self.status.last_error = str(exc)
+        self._update_status()
 
     def save_named_preset(self) -> None:
         name = self.preset_var.get().strip()

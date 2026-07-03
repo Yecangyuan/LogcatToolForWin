@@ -530,6 +530,36 @@ def test_connect_tcp_defaults_to_5555_when_port_is_omitted(monkeypatch) -> None:
     assert controller.devices == [device]
 
 
+def test_export_entries_warns_for_empty_logs_without_file_dialog(monkeypatch) -> None:
+    controller = make_controller()
+    warnings: list[tuple[str, str]] = []
+    errors: list[tuple[object, ...]] = []
+    save_dialog_calls: list[object] = []
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: errors.append(args),
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "filedialog",
+        SimpleNamespace(
+            asksaveasfilename=lambda **kwargs: save_dialog_calls.append(kwargs) or "logs.txt"
+        ),
+    )
+
+    gui.LogcatToolGUI._export_entries(controller, [], "可见")
+
+    assert warnings == [("没有日志", "当前没有可导出的可见日志。")]
+    assert errors == []
+    assert save_dialog_calls == []
+    assert controller.status.last_error == "当前没有可导出的可见日志。"
+
+
 def test_clear_device_logcat_schedules_background_clear(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")

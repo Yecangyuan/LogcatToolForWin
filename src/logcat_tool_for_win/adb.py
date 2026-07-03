@@ -4,11 +4,15 @@ import ipaddress
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
+from typing import Optional
 
 from logcat_tool_for_win.devices import parse_devices_output
 from logcat_tool_for_win.filters import build_logcat_filter_spec
 from logcat_tool_for_win.models import DeviceInfo, FilterState
+
+DEFAULT_TCP_PORT = 5555
 
 
 class ADBCommandError(RuntimeError):
@@ -56,6 +60,36 @@ def validate_tcp_target(target: str) -> str:
     return target
 
 
+def validate_tcp_port(port: int) -> int:
+    if port < 1 or port > 65535:
+        raise ValueError(f"无效的 TCP 端口：{port}")
+    return port
+
+
+def extract_tcp_port(target: str, default: int = DEFAULT_TCP_PORT) -> int:
+    stripped = target.strip()
+    if not stripped:
+        return validate_tcp_port(default)
+    return int(validate_tcp_target(stripped).rsplit(":", 1)[1])
+
+
+def parse_route_source_ip(output: str) -> str:
+    for line in output.splitlines():
+        parts = line.split()
+        if "src" not in parts:
+            continue
+        src_index = parts.index("src")
+        if src_index + 1 >= len(parts):
+            continue
+        try:
+            address = ipaddress.ip_address(parts[src_index + 1])
+        except ValueError:
+            continue
+        if not address.is_loopback:
+            return str(address)
+    return ""
+
+
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
     _suppress_windows_error_dialogs()
     run_kwargs = {
@@ -86,9 +120,31 @@ def list_devices() -> list[DeviceInfo]:
     return parse_devices_output(result.stdout)
 
 
-def connect_device(target: str) -> str:
-    result = run_adb(["connect", validate_tcp_target(target)])
+def connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+    validated_target = validate_tcp_target(target)
+    last_error: Optional[ADBCommandError] = None
+    for attempt in range(max(1, attempts)):
+        if attempt and delay_seconds > 0:
+            time.sleep(delay_seconds)
+        try:
+            result = run_adb(["connect", validated_target])
+        except ADBCommandError as exc:
+            last_error = exc
+            continue
+        return result.stdout
+    if last_error is not None:
+        raise last_error
+    raise ADBCommandError(f"无法连接 {validated_target}")
+
+
+def enable_tcpip(serial: str, port: int = DEFAULT_TCP_PORT) -> str:
+    result = run_adb(["-s", serial, "tcpip", str(validate_tcp_port(port))])
     return result.stdout
+
+
+def get_device_route_ip(serial: str) -> str:
+    result = run_adb(["-s", serial, "shell", "ip", "route"], timeout=5.0)
+    return parse_route_source_ip(result.stdout)
 
 
 def restart_server() -> None:

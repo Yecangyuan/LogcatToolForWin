@@ -570,7 +570,7 @@ class LogcatToolGUI:
                 enable_tcpip(selected_usb_serial, target_port)
                 message = connect_device(target, attempts=3, delay_seconds=1.0).strip()
             else:
-                message = connect_device(target).strip()
+                message = connect_device(target, attempts=3, delay_seconds=1.0).strip()
             message = message or f"已连接 {target}"
             try:
                 devices = list_devices()

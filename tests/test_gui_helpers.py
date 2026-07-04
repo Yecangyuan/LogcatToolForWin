@@ -89,6 +89,7 @@ class DummyText:
         self.tag_add_calls: list[tuple[str, object, object]] = []
         self.tag_config_calls: list[tuple[str, dict[str, object]]] = []
         self.see_calls: list[object] = []
+        self.index_calls: list[object] = []
         self.next_line = 1
 
     def configure(self, **kwargs: object) -> None:
@@ -99,6 +100,7 @@ class DummyText:
         self.next_line = 1
 
     def index(self, _index: object) -> str:
+        self.index_calls.append(_index)
         return f"{self.next_line}.0"
 
     def insert(self, index: object, text: str, tag: object) -> None:
@@ -295,6 +297,21 @@ def test_append_visible_entries_configures_each_highlight_tag_once() -> None:
     assert controller.text.tag_add_calls == [
         ("highlight::ANR", "1.0", "2.0"),
         ("highlight::ANR", "2.0", "3.0"),
+    ]
+
+
+def test_append_visible_entries_skips_index_lookup_for_plain_lines() -> None:
+    controller = make_controller()
+    entry = make_entry("plain line")
+    entry.matches_filters = True
+    entry.highlight_keys = ()
+
+    gui.LogcatToolGUI._append_visible_entries(controller, [entry])
+
+    assert controller.text.index_calls == []
+    assert controller.text.tag_add_calls == []
+    assert controller.text.insert_calls == [
+        (gui.tk.END, "06-18 10:00:00.000 E ActivityManager: plain line\n", "E")
     ]
 
 

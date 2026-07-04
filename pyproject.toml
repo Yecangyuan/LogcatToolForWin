@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69.0", "wheel"]
+requires = ["setuptools>=69.0,<77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,8 +8,8 @@ version = "0.1.0"
 description = "Windows GUI Android logcat viewer with bundled adb."
 readme = "README.md"
 requires-python = ">=3.8"
-license = "MIT"
 authors = [{name = "Simley"}]
+license = {text = "MIT"}
 dependencies = []
 
 [project.optional-dependencies]

@@ -26,8 +26,16 @@ def test_validate_tcp_target_accepts_ipv4_target() -> None:
     assert validate_tcp_target("192.168.0.8:5555") == "192.168.0.8:5555"
 
 
+def test_validate_tcp_target_trims_host_and_port_around_separator() -> None:
+    assert validate_tcp_target(" 192.168.0.8 : 5555 ") == "192.168.0.8:5555"
+
+
 def test_normalize_tcp_target_adds_default_port_for_ipv4_target() -> None:
     assert normalize_tcp_target("192.168.0.8") == "192.168.0.8:5555"
+
+
+def test_normalize_tcp_target_trims_host_and_port_around_separator() -> None:
+    assert normalize_tcp_target(" 192.168.0.8 : 5555 ") == "192.168.0.8:5555"
 
 
 def test_extract_tcp_port_uses_default_for_blank_target() -> None:
@@ -158,6 +166,27 @@ def test_connect_device_uses_default_port_for_ipv4_target_without_port(
     monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", fake_run_adb)
 
     assert connect_device("192.168.0.8") == "connected to 192.168.0.8:5555\n"
+    assert calls == [["connect", "192.168.0.8:5555"]]
+
+
+def test_connect_device_normalizes_spaced_tcp_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run_adb(args: list[str], timeout: float = 10.0):
+        calls.append(args)
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", fake_run_adb)
+
+    assert connect_device(" 192.168.0.8 : 5555 ") == "connected to 192.168.0.8:5555\n"
     assert calls == [["connect", "192.168.0.8:5555"]]
 
 

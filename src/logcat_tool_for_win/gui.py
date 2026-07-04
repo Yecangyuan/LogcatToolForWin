@@ -945,14 +945,15 @@ class LogcatToolGUI:
         self.filters = filters
         self.highlight_rules = rules
         entry.matches_filters = entry_matches(entry, filters)
-        entry.highlight_keys = match_highlight_rules(entry, rules)
         if entry.matches_filters or not filters.match_only:
+            entry.highlight_keys = match_highlight_rules(entry, rules)
             full_render_required = (
                 self.visible_lines.maxlen is not None
                 and len(self.visible_lines) >= self.visible_lines.maxlen
             )
             self.visible_lines.append(entry)
             return entry, full_render_required
+        entry.highlight_keys = ()
         return None, False
 
     def _refresh_visible_entries(self) -> None:

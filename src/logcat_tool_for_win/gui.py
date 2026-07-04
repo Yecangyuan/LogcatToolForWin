@@ -992,9 +992,11 @@ class LogcatToolGUI:
         self.visible_lines.clear()
         for entry in self.raw_lines:
             entry.matches_filters = entry_matches(entry, filters)
-            entry.highlight_keys = match_highlight_rules(entry, rules)
             if entry.matches_filters or not filters.match_only:
+                entry.highlight_keys = match_highlight_rules(entry, rules)
                 self.visible_lines.append(entry)
+            else:
+                entry.highlight_keys = ()
         self._render_visible()
 
     def _render_visible(self) -> None:

@@ -324,6 +324,35 @@ def test_append_entry_skips_highlight_matching_for_hidden_match_only_entry(monke
     assert entry.highlight_keys == ()
 
 
+def test_refresh_visible_entries_skips_highlight_matching_for_hidden_match_only_entries(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    hidden_entry = make_entry("hidden line")
+    visible_entry = make_entry("visible line")
+    visible_entry.level = "F"
+    controller.raw_lines.extend([hidden_entry, visible_entry])
+    filters = FilterState(minimum_level="F", match_only=True)
+    rules = [HighlightRule(name="line", pattern="line", foreground="#fff")]
+    calls: list[LogEntry] = []
+
+    controller._current_filters = lambda: filters
+    controller._current_highlight_rules = lambda: rules
+
+    def match_highlights(entry_arg: LogEntry, rules_arg: list[HighlightRule]) -> tuple[str, ...]:
+        calls.append(entry_arg)
+        return ("line",)
+
+    monkeypatch.setattr(gui, "match_highlight_rules", match_highlights)
+
+    gui.LogcatToolGUI._refresh_visible_entries(controller)
+
+    assert calls == [visible_entry]
+    assert list(controller.visible_lines) == [visible_entry]
+    assert hidden_entry.highlight_keys == ()
+    assert visible_entry.highlight_keys == ("line",)
+
+
 def test_poll_stream_reuses_filter_snapshot_for_line_batch() -> None:
     controller = make_controller()
     controller.status.stream_state = "streaming"

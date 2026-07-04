@@ -121,7 +121,7 @@ def validate_tcp_target(target: str) -> str:
     if ":" not in stripped:
         raise ValueError("请输入 IP:端口 格式的 TCP 目标。")
 
-    host, port_text = stripped.rsplit(":", 1)
+    host, port_text = (part.strip() for part in stripped.rsplit(":", 1))
     try:
         ipaddress.ip_address(host)
     except ValueError as exc:

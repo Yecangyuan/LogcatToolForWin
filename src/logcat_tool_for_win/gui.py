@@ -633,7 +633,12 @@ class LogcatToolGUI:
         else:
             prefix = tcpip_message or "已开启无线 ADB。"
             message = f"{prefix} 请在连接框输入手机 IP:{port} 后点连接。"
-        return target, message, list_devices()
+        try:
+            devices = list_devices()
+        except Exception as exc:
+            devices = _ensure_tcp_device(self.devices, target) if target else list(self.devices)
+            message = f"{message}；设备列表刷新失败：{exc}"
+        return target, message, devices
 
     def _handle_wireless_adb_success(self, result: tuple[str, str, list[DeviceInfo]]) -> None:
         target, message, devices = result

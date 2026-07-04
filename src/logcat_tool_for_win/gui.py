@@ -109,6 +109,23 @@ def format_status_text(status: AppStatus) -> str:
     return base
 
 
+def _ensure_tcp_device(devices: Iterable[DeviceInfo], target: str) -> list[DeviceInfo]:
+    result = list(devices)
+    if not any(device.serial == target for device in result):
+        result.append(
+            DeviceInfo(
+                serial=target,
+                display_name=target,
+                transport="tcp",
+                state="device",
+                model="",
+                product="",
+                raw_descriptor=f"{target}\tdevice",
+            )
+        )
+    return result
+
+
 class LogcatToolGUI:
     def __init__(self, root: tk.Tk) -> None:
         if TK_IMPORT_ERROR is not None:
@@ -537,8 +554,19 @@ class LogcatToolGUI:
         if target != raw_target:
             self.connect_var.set(target)
 
+        existing_devices = list(self.devices)
+
         def action() -> tuple[str, str, list[DeviceInfo]]:
-            return target, connect_device(target).strip(), list_devices()
+            message = connect_device(target).strip() or f"已连接 {target}"
+            try:
+                devices = list_devices()
+            except Exception as exc:
+                return (
+                    target,
+                    f"{message}；设备列表刷新失败：{exc}",
+                    _ensure_tcp_device(existing_devices, target),
+                )
+            return target, message, _ensure_tcp_device(devices, target)
 
         self._run_background_task(
             f"正在连接 {target}...",

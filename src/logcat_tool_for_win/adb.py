@@ -54,6 +54,7 @@ def build_adb_process_kwargs(
     if bufsize is not None:
         run_kwargs["bufsize"] = bufsize
     if _is_windows():
+        run_kwargs["close_fds"] = False
         run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         startupinfo_factory = getattr(subprocess, "STARTUPINFO", None)
         if startupinfo_factory is not None:

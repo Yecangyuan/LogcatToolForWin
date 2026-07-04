@@ -19,6 +19,11 @@ ADB_LAUNCH_OPTIONS = (
     (False, False),
     (True, False),
 )
+TCP_CONNECT_FAILURE_HINT = (
+    "请确认手机和电脑在同一局域网；手机已开启 USB 调试并允许授权；"
+    "如果还没有通过 USB 开启无线 ADB，请先连接 USB 后点连接或开启无线 ADB；"
+    "并确认端口未被防火墙拦截。"
+)
 
 
 class ADBCommandError(RuntimeError):
@@ -175,6 +180,15 @@ def validate_connect_output(output: str, target: str) -> str:
     raise ADBCommandError(message or f"无法连接 {target}")
 
 
+def format_connect_error(target: str, error: ADBCommandError) -> ADBCommandError:
+    message = str(error).strip()
+    if not message:
+        return ADBCommandError(f"无法连接 {target}。{TCP_CONNECT_FAILURE_HINT}")
+    if message.startswith(f"无法连接 {target}"):
+        return ADBCommandError(message)
+    return ADBCommandError(f"无法连接 {target}。{TCP_CONNECT_FAILURE_HINT}\n原始错误：{message}")
+
+
 def parse_route_source_ip(output: str) -> str:
     for line in output.splitlines():
         parts = line.split()
@@ -244,7 +258,7 @@ def connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -
             last_error = exc
             continue
     if last_error is not None:
-        raise last_error
+        raise format_connect_error(validated_target, last_error) from last_error
     raise ADBCommandError(f"无法连接 {validated_target}")
 
 

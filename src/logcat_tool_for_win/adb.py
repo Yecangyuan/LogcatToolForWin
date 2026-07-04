@@ -128,6 +128,14 @@ def extract_tcp_port(target: str, default: int = DEFAULT_TCP_PORT) -> int:
     return int(normalize_tcp_target(stripped, default).rsplit(":", 1)[1])
 
 
+def validate_connect_output(output: str, target: str) -> str:
+    message = output.strip()
+    lowered = message.lower()
+    if lowered.startswith(("connected to ", "already connected to ")):
+        return output
+    raise ADBCommandError(message or f"无法连接 {target}")
+
+
 def parse_route_source_ip(output: str) -> str:
     for line in output.splitlines():
         parts = line.split()
@@ -193,7 +201,11 @@ def connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -
         except ADBCommandError as exc:
             last_error = exc
             continue
-        return result.stdout
+        try:
+            return validate_connect_output(result.stdout, validated_target)
+        except ADBCommandError as exc:
+            last_error = exc
+            continue
     if last_error is not None:
         raise last_error
     raise ADBCommandError(f"无法连接 {validated_target}")

@@ -1045,16 +1045,23 @@ class LogcatToolGUI:
             )
 
     def _insert_visible_entry(self, entry: LogEntry, rule_map: dict[str, HighlightRule]) -> None:
+        highlight_names = (
+            tuple(rule_name for rule_name in entry.highlight_keys if rule_name in rule_map)
+            if entry.highlight_keys
+            else ()
+        )
+        add_filtered_out_tag = not entry.matches_filters and not self.filters.match_only
+        if not add_filtered_out_tag and not highlight_names:
+            self.text.insert(tk.END, entry.raw_line + "\n", entry.level)
+            return
+
         line_start = self.text.index(tk.END)
         self.text.insert(tk.END, entry.raw_line + "\n", entry.level)
         line_end = self.text.index(tk.END)
-
-        if not entry.matches_filters and not self.filters.match_only:
+        if add_filtered_out_tag:
             self.text.tag_add("filtered-out", line_start, line_end)
 
-        for rule_name in entry.highlight_keys:
-            if rule_name not in rule_map:
-                continue
+        for rule_name in highlight_names:
             tag_name = build_highlight_text_tag(rule_name)
             self.text.tag_add(tag_name, line_start, line_end)
 

@@ -924,8 +924,12 @@ class LogcatToolGUI:
                 self.start_stream()
                 return
 
+        refresh_error = self.status.last_error.strip()
         self.status.stream_state = "failed"
-        self.status.last_error = "重连设备不可用。"
+        if refresh_error:
+            self.status.last_error = f"重连设备不可用：{refresh_error}"
+        else:
+            self.status.last_error = "重连设备不可用。"
         self._update_status()
 
     def _poll_stream(self) -> None:

@@ -999,6 +999,27 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh() -> None:
     assert started_with == [gui.device_label(target_device)]
 
 
+def test_retry_stream_preserves_refresh_failure_reason() -> None:
+    controller = make_controller()
+    controller.reconnect_target_serial = "target-serial"
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = "target-serial"
+
+    def fake_refresh_devices() -> None:
+        controller.devices = []
+        controller.status.adb_ready = False
+        controller.status.last_error = "adb unavailable"
+
+    controller.refresh_devices = fake_refresh_devices
+    controller.start_stream = lambda: None
+
+    gui.LogcatToolGUI._retry_stream(controller)
+
+    assert controller.status.stream_state == "failed"
+    assert "重连设备不可用" in controller.status.last_error
+    assert "adb unavailable" in controller.status.last_error
+
+
 def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")

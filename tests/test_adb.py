@@ -515,3 +515,34 @@ def test_run_adb_falls_back_without_startupinfo_after_repeated_invalid_windows_h
     assert "startupinfo" in captured_kwargs[1]
     assert "startupinfo" not in captured_kwargs[2]
     assert "creationflags" not in captured_kwargs[2]
+
+
+def test_run_adb_falls_back_to_plain_isolated_process_after_invalid_windows_handles(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_windows_startupinfo,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    captured_kwargs: list[dict[str, object]] = []
+
+    def fake_run(*args, **kwargs):
+        captured_kwargs.append(kwargs)
+        if len(captured_kwargs) < 4:
+            exc = OSError("[WinError 6] 句柄无效。")
+            exc.winerror = 6
+            raise exc
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("C:/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    result = run_adb(["connect", "192.168.0.8:5555"])
+
+    assert result is completed
+    assert "startupinfo" not in captured_kwargs[3]
+    assert "creationflags" not in captured_kwargs[3]
+    assert captured_kwargs[3]["close_fds"] is True

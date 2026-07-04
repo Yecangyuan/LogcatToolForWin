@@ -560,9 +560,16 @@ class LogcatToolGUI:
             self.connect_var.set(target)
 
         existing_devices = list(self.devices)
+        selected_usb_serial = self._selected_ready_usb_serial()
+        target_port = extract_tcp_port(target, DEFAULT_TCP_PORT)
 
         def action() -> tuple[str, str, list[DeviceInfo]]:
-            message = connect_device(target).strip() or f"已连接 {target}"
+            if selected_usb_serial:
+                enable_tcpip(selected_usb_serial, target_port)
+                message = connect_device(target, attempts=3, delay_seconds=1.0).strip()
+            else:
+                message = connect_device(target).strip()
+            message = message or f"已连接 {target}"
             try:
                 devices = list_devices()
             except Exception as exc:
@@ -659,6 +666,15 @@ class LogcatToolGUI:
         messagebox.showerror("开启无线失败", str(exc))
         self.status.last_error = str(exc)
         self._update_status()
+
+    def _selected_ready_usb_serial(self) -> str:
+        try:
+            device = self._current_device()
+        except ValueError:
+            return ""
+        if device.state == "device" and device.transport == "usb":
+            return device.serial
+        return ""
 
     def _current_device(self) -> DeviceInfo:
         current = self.device_var.get()

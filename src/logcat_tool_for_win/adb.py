@@ -17,6 +17,7 @@ ADB_LAUNCH_OPTIONS = (
     (None, True),
     (True, True),
     (False, False),
+    (True, False),
 )
 
 

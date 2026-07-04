@@ -111,6 +111,14 @@ def test_parse_threadtime_line_extracts_fields() -> None:
     assert entry.message == "crash"
 
 
+def test_parse_threadtime_line_allows_colons_inside_tag() -> None:
+    entry = parse_threadtime_line("06-18 12:00:00.000  1234  1235 I My:App: boot complete")
+
+    assert entry.level == "I"
+    assert entry.tag == "My:App"
+    assert entry.message == "boot complete"
+
+
 def test_parse_threadtime_line_returns_raw_fallback_for_unmatched_lines() -> None:
     entry = parse_threadtime_line("not a log line\n")
     assert entry.timestamp_text == ""

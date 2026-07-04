@@ -11,7 +11,7 @@ from logcat_tool_for_win.models import LogEntry, StreamEvent
 
 THREADTIME_RE = re.compile(
     r"^(?P<stamp>\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+"
-    r"\d+\s+\d+\s+(?P<level>[VDIWEF])\s+(?P<tag>[^:]+):\s(?P<message>.*)$"
+    r"\d+\s+\d+\s+(?P<level>[VDIWEF])\s+(?P<tag>.+?):\s(?P<message>.*)$"
 )
 
 

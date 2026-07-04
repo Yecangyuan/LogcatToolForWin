@@ -760,6 +760,7 @@ class LogcatToolGUI:
             self.status.queue_depth = 0
             self._update_status()
             return
+        self._discard_pending_events()
         self.status.stream_state = "idle"
         self.status.reconnect_attempt = 0
         self.status.queue_depth = 0

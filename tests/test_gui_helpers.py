@@ -539,6 +539,21 @@ def test_stop_active_session_retains_failed_session_ownership() -> None:
     assert controller.events is original_events
 
 
+def test_stop_stream_discards_pending_events_without_active_session() -> None:
+    controller = make_controller()
+    controller.session = None
+    controller.status.stream_state = "streaming"
+    controller.status.queue_depth = 2
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("late one")))
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("late two")))
+
+    gui.LogcatToolGUI.stop_stream(controller)
+
+    assert controller.events.empty()
+    assert controller.status.stream_state == "idle"
+    assert controller.status.queue_depth == 0
+
+
 def test_start_stream_uses_unfiltered_capture_command_for_raw_export(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")

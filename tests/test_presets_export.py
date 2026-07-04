@@ -50,6 +50,27 @@ def test_load_presets_returns_empty_dict_for_bad_payload(tmp_path: Path) -> None
     assert load_presets(presets_file) == {}
 
 
+def test_load_presets_normalizes_loaded_filter_values(tmp_path: Path) -> None:
+    presets_file = tmp_path / "presets.json"
+    presets_file.write_text(
+        json.dumps(
+            {
+                "Noisy": {
+                    "minimum_level": "?",
+                    "tag_filters": ["", " MyApp ", "MyApp", None, "ActivityManager"],
+                    "keyword": "crash",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    presets = load_presets(presets_file)
+
+    assert presets["Noisy"].minimum_level == "V"
+    assert presets["Noisy"].tag_filters == ("ActivityManager", "MyApp")
+
+
 def test_load_state_returns_defaults_for_bad_payload(tmp_path: Path) -> None:
     state_file = tmp_path / "state.json"
     state_file.write_text("{not-json", encoding="utf-8")
@@ -84,6 +105,29 @@ def test_load_state_skips_invalid_highlight_rules(tmp_path: Path) -> None:
     assert loaded_filters.match_only is False
     assert [rule.name for rule in loaded_rules] == ["Good"]
     assert recent_target == ""
+
+
+def test_load_state_normalizes_loaded_filter_values(tmp_path: Path) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "filters": {
+                    "minimum_level": "?",
+                    "tag_filters": ["", " MyApp ", "MyApp", None, "ActivityManager"],
+                },
+                "highlight_rules": [],
+                "recent_target": "192.168.1.111:5555",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded_filters, _loaded_rules, recent_target = load_state(state_file)
+
+    assert loaded_filters.minimum_level == "V"
+    assert loaded_filters.tag_filters == ("ActivityManager", "MyApp")
+    assert recent_target == "192.168.1.111:5555"
 
 
 def test_export_lines_writes_text_file_and_creates_parent_directories(tmp_path: Path) -> None:

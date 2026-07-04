@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from logcat_tool_for_win.filters import LEVEL_ORDER, normalize_tag_filters
 from logcat_tool_for_win.models import FilterState, HighlightRule
 
 
@@ -23,20 +24,27 @@ def _coerce_bool(value: object, default: bool) -> bool:
     return default
 
 
+def _coerce_minimum_level(value: object) -> str:
+    if not isinstance(value, str):
+        return "V"
+    level = value.upper()
+    return level if level in LEVEL_ORDER else "V"
+
+
+def _coerce_tag_filters(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return normalize_tag_filters(",".join(str(item) for item in value if item is not None))
+
+
 def _filters_from_payload(payload: object) -> FilterState:
     if not isinstance(payload, dict):
         return FilterState()
 
-    raw_tags = payload.get("tag_filters", [])
-    tag_filters: tuple[str, ...] = ()
-    if isinstance(raw_tags, (list, tuple)):
-        tag_filters = tuple(str(item) for item in raw_tags if item is not None)
-
-    minimum_level = payload.get("minimum_level", "V")
     keyword = payload.get("keyword", "")
     return FilterState(
-        minimum_level=minimum_level if isinstance(minimum_level, str) and minimum_level else "V",
-        tag_filters=tag_filters,
+        minimum_level=_coerce_minimum_level(payload.get("minimum_level", "V")),
+        tag_filters=_coerce_tag_filters(payload.get("tag_filters", [])),
         keyword=keyword if isinstance(keyword, str) else "",
         match_only=_coerce_bool(payload.get("match_only", False), False),
         auto_scroll=_coerce_bool(payload.get("auto_scroll", True), True),

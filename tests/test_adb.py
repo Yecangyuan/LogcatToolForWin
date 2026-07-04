@@ -125,6 +125,21 @@ def test_connect_device_rejects_failed_connect_output_with_zero_exit(
         connect_device("192.168.0.8:5555")
 
 
+def test_connect_device_rejects_connected_output_for_different_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.9:5555\n",
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    with pytest.raises(ADBCommandError, match="connected to 192.168.0.9:5555"):
+        connect_device("192.168.0.8:5555")
+
+
 def test_connect_device_uses_default_port_for_ipv4_target_without_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

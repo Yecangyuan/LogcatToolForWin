@@ -311,6 +311,22 @@ def test_run_adb_raises_adb_command_error_on_non_zero_exit(
         run_adb(["version"])
 
 
+def test_run_adb_includes_stdout_error_when_stderr_has_daemon_banner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=1,
+        stdout="failed to connect to 192.168.0.8:5555: Connection refused\n",
+        stderr="* daemon not running; starting now at tcp:5037\n* daemon started successfully\n",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", lambda *args, **kwargs: completed)
+
+    with pytest.raises(ADBCommandError, match="failed to connect"):
+        run_adb(["connect", "192.168.0.8:5555"])
+
+
 def test_run_adb_reports_missing_adb_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -89,6 +89,24 @@ def test_resolve_adb_path_prefers_embedded_platform_tools_when_frozen(
     assert resolve_adb_path() == embedded_adb
 
 
+def test_resolve_adb_path_falls_back_to_path_adb_when_source_resource_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path_adb = tmp_path / "adb.exe"
+    path_adb.write_text("adb", encoding="utf-8")
+    source_file = tmp_path / "src" / "logcat_tool_for_win" / "adb.py"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("", encoding="utf-8")
+
+    monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb.sys", SimpleNamespace(executable="python"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.__file__", str(source_file))
+    monkeypatch.setattr("shutil.which", lambda name: str(path_adb) if name == "adb" else None)
+
+    assert resolve_adb_path() == path_adb
+
+
 def test_build_logcat_command_uses_resolved_adb_path_and_filter_spec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

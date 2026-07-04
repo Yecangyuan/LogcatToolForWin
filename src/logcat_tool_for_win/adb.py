@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -116,9 +117,21 @@ def resolve_adb_path() -> Path:
         bundled_adb = bundle_root / "platform-tools" / "adb.exe"
         if bundled_adb.exists():
             return bundled_adb
-        return Path(sys.executable).resolve().parent / "platform-tools" / "adb.exe"
+        packaged_adb = Path(sys.executable).resolve().parent / "platform-tools" / "adb.exe"
+        if packaged_adb.exists():
+            return packaged_adb
+        path_adb = shutil.which("adb")
+        if path_adb:
+            return Path(path_adb)
+        return packaged_adb
 
-    return Path(__file__).resolve().parent / "resources" / "platform-tools" / "adb.exe"
+    source_adb = Path(__file__).resolve().parent / "resources" / "platform-tools" / "adb.exe"
+    if source_adb.exists():
+        return source_adb
+    path_adb = shutil.which("adb")
+    if path_adb:
+        return Path(path_adb)
+    return source_adb
 
 
 def validate_tcp_target(target: str) -> str:

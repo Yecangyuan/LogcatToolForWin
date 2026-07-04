@@ -43,6 +43,12 @@ def test_build_highlight_rules_creates_rules_from_csv_text() -> None:
     assert [rule.name for rule in rules] == ["ANR", "crash"]
 
 
+def test_build_highlight_rules_deduplicates_patterns_in_input_order() -> None:
+    rules = gui.build_highlight_rules("ANR, crash, ANR, crash, timeout")
+
+    assert [rule.name for rule in rules] == ["ANR", "crash", "timeout"]
+
+
 class DummyVar:
     def __init__(self, value: object = "") -> None:
         self.value = value

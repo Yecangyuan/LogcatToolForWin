@@ -89,9 +89,11 @@ def format_stream_state(stream_state: str) -> str:
 
 def build_highlight_rules(raw: str) -> list[HighlightRule]:
     rules: list[HighlightRule] = []
+    seen: set[str] = set()
     for item in raw.split(","):
         pattern = item.strip()
-        if pattern:
+        if pattern and pattern not in seen:
+            seen.add(pattern)
             rules.append(HighlightRule(name=pattern, pattern=pattern, foreground=WARN))
     return rules
 

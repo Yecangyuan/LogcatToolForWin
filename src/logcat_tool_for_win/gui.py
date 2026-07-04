@@ -39,7 +39,12 @@ from logcat_tool_for_win.config import (
 )
 from logcat_tool_for_win.devices import device_label
 from logcat_tool_for_win.export import export_lines
-from logcat_tool_for_win.filters import entry_matches, normalize_tag_filters
+from logcat_tool_for_win.filters import (
+    PreparedFilterState,
+    entry_matches_prepared,
+    normalize_tag_filters,
+    prepare_filter_state,
+)
 from logcat_tool_for_win.highlight import DEFAULT_LEVEL_COLORS, match_highlight_rules
 from logcat_tool_for_win.log_stream import LogcatSession
 from logcat_tool_for_win.models import (
@@ -911,6 +916,7 @@ class LogcatToolGUI:
         full_render_required = False
         new_visible_entries: list[LogEntry] = []
         filters_snapshot: Optional[FilterState] = None
+        prepared_filters_snapshot: Optional[PreparedFilterState] = None
         highlight_rules_snapshot: Optional[list[HighlightRule]] = None
         processed = 0
 
@@ -930,6 +936,7 @@ class LogcatToolGUI:
                     self.status.last_error = ""
                 if filters_snapshot is None:
                     filters_snapshot = self._current_filters()
+                    prepared_filters_snapshot = prepare_filter_state(filters_snapshot)
                     highlight_rules_snapshot = self._current_highlight_rules()
                     self.filters = filters_snapshot
                     self.highlight_rules = highlight_rules_snapshot
@@ -937,6 +944,7 @@ class LogcatToolGUI:
                     event.entry,
                     filters_snapshot,
                     highlight_rules_snapshot,
+                    prepared_filters_snapshot,
                 )
                 if visible_entry is not None:
                     new_visible_entries.append(visible_entry)
@@ -969,15 +977,18 @@ class LogcatToolGUI:
         entry: LogEntry,
         filters: Optional[FilterState] = None,
         rules: Optional[list[HighlightRule]] = None,
+        prepared_filters: Optional[PreparedFilterState] = None,
     ) -> tuple[Optional[LogEntry], bool]:
         self.raw_lines.append(entry)
         if filters is None:
             filters = self._current_filters()
+        if prepared_filters is None:
+            prepared_filters = prepare_filter_state(filters)
         if rules is None:
             rules = self._current_highlight_rules()
         self.filters = filters
         self.highlight_rules = rules
-        entry.matches_filters = entry_matches(entry, filters)
+        entry.matches_filters = entry_matches_prepared(entry, prepared_filters)
         if entry.matches_filters or not filters.match_only:
             entry.highlight_keys = match_highlight_rules(entry, rules)
             full_render_required = (
@@ -991,12 +1002,13 @@ class LogcatToolGUI:
 
     def _refresh_visible_entries(self) -> None:
         filters = self._current_filters()
+        prepared_filters = prepare_filter_state(filters)
         rules = self._current_highlight_rules()
         self.filters = filters
         self.highlight_rules = rules
         self.visible_lines.clear()
         for entry in self.raw_lines:
-            entry.matches_filters = entry_matches(entry, filters)
+            entry.matches_filters = entry_matches_prepared(entry, prepared_filters)
             if entry.matches_filters or not filters.match_only:
                 entry.highlight_keys = match_highlight_rules(entry, rules)
                 self.visible_lines.append(entry)

@@ -83,6 +83,21 @@ def test_entry_matches_rejects_unknown_minimum_level_without_crashing() -> None:
     assert entry_matches(entry, state) is False
 
 
+def test_entry_matches_skips_keyword_work_when_level_or_tag_rejects_entry() -> None:
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="D",
+        tag="OtherApp",
+        message="fatal crash happened",
+        raw_line="raw fatal crash happened",
+    )
+    keyword = LowerCountingStr("crash")
+    state = FilterState(minimum_level="E", tag_filters=("MyApp",), keyword=keyword)
+
+    assert entry_matches(entry, state) is False
+    assert keyword.lower_calls == 0
+
+
 def test_match_highlight_rules_returns_matching_names() -> None:
     entry = LogEntry(
         timestamp_text="06-18 10:00:00.000",

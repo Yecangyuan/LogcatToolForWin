@@ -37,9 +37,11 @@ def entry_matches(entry: LogEntry, state: FilterState) -> bool:
 
     level_ok = entry_level >= minimum_level
     tag_ok = not state.tag_filters or entry.tag in state.tag_filters
+    if not level_ok or not tag_ok:
+        return False
+
     if not state.keyword:
-        keyword_ok = True
-    else:
-        haystack = " ".join([entry.tag, entry.message, entry.raw_line]).lower()
-        keyword_ok = state.keyword.lower() in haystack
-    return level_ok and tag_ok and keyword_ok
+        return True
+
+    haystack = " ".join([entry.tag, entry.message, entry.raw_line]).lower()
+    return state.keyword.lower() in haystack

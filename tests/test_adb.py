@@ -317,3 +317,57 @@ def test_run_adb_does_not_inherit_invalid_gui_stdin(
     run_adb(["connect", "192.168.0.8:5555"])
 
     assert captured_kwargs["stdin"] == subprocess.DEVNULL
+
+
+def test_run_adb_uses_explicit_standard_handles_for_gui_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    captured_kwargs = {}
+
+    def fake_run(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    run_adb(["connect", "192.168.0.8:5555"])
+
+    assert captured_kwargs["stdin"] == subprocess.DEVNULL
+    assert captured_kwargs["stdout"] == subprocess.PIPE
+    assert captured_kwargs["stderr"] == subprocess.PIPE
+    assert "capture_output" not in captured_kwargs
+
+
+def test_run_adb_hides_windows_adb_process_with_startupinfo(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_windows_startupinfo,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    captured_kwargs = {}
+
+    def fake_run(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("C:/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    run_adb(["connect", "192.168.0.8:5555"])
+
+    startupinfo = captured_kwargs["startupinfo"]
+    assert captured_kwargs["creationflags"] == 0x08000000
+    assert isinstance(startupinfo, fake_windows_startupinfo)
+    assert startupinfo.dwFlags & 0x00000001
+    assert startupinfo.wShowWindow == 0

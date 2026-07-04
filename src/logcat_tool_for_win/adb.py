@@ -160,9 +160,14 @@ def extract_tcp_port(target: str, default: int = DEFAULT_TCP_PORT) -> int:
 
 def validate_connect_output(output: str, target: str) -> str:
     message = output.strip()
-    lowered = message.lower()
-    if lowered.startswith(("connected to ", "already connected to ")):
-        return output
+    lowered_target = target.lower()
+    for prefix in ("connected to ", "already connected to "):
+        if not message.lower().startswith(prefix):
+            continue
+        connected_target = message[len(prefix) :].strip()
+        if connected_target.lower() == lowered_target:
+            return output
+        break
     raise ADBCommandError(message or f"无法连接 {target}")
 
 

@@ -6,13 +6,18 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from logcat_tool_for_win.devices import parse_devices_output
 from logcat_tool_for_win.filters import build_logcat_filter_spec
 from logcat_tool_for_win.models import DeviceInfo, FilterState
 
 DEFAULT_TCP_PORT = 5555
+ADB_LAUNCH_OPTIONS = (
+    (None, True),
+    (True, True),
+    (False, False),
+)
 
 
 class ADBCommandError(RuntimeError):
@@ -43,6 +48,7 @@ def build_adb_process_kwargs(
     timeout: Optional[float] = None,
     bufsize: Optional[int] = None,
     close_fds: Optional[bool] = None,
+    hide_window: bool = True,
 ) -> dict[str, object]:
     run_kwargs: dict[str, object] = {
         "stdin": subprocess.DEVNULL,
@@ -56,18 +62,42 @@ def build_adb_process_kwargs(
         run_kwargs["bufsize"] = bufsize
     if _is_windows():
         run_kwargs["close_fds"] = False if close_fds is None else close_fds
-        run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        startupinfo_factory = getattr(subprocess, "STARTUPINFO", None)
-        if startupinfo_factory is not None:
-            startupinfo = startupinfo_factory()
-            startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
-            startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
-            run_kwargs["startupinfo"] = startupinfo
+        if hide_window:
+            run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            startupinfo_factory = getattr(subprocess, "STARTUPINFO", None)
+            if startupinfo_factory is not None:
+                startupinfo = startupinfo_factory()
+                startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+                startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+                run_kwargs["startupinfo"] = startupinfo
     return run_kwargs
 
 
+def iter_adb_process_kwargs(
+    *,
+    timeout: Optional[float] = None,
+    bufsize: Optional[int] = None,
+) -> Iterator[dict[str, object]]:
+    for close_fds, hide_window in ADB_LAUNCH_OPTIONS:
+        yield build_adb_process_kwargs(
+            timeout=timeout,
+            bufsize=bufsize,
+            close_fds=close_fds,
+            hide_window=hide_window,
+        )
+
+
 def _is_invalid_windows_handle(exc: OSError) -> bool:
-    return _is_windows() and getattr(exc, "winerror", None) == 6
+    if not _is_windows():
+        return False
+    if getattr(exc, "winerror", None) == 6:
+        return True
+    message = str(exc).lower()
+    return (
+        "winerror 6" in message
+        or "句柄无效" in message
+        or "handle is invalid" in message
+    )
 
 
 def resolve_adb_path() -> Path:
@@ -158,11 +188,12 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
     adb_path = resolve_adb_path()
     command = [str(adb_path), *args]
 
-    for close_fds in (None, True):
+    launch_kwargs = list(iter_adb_process_kwargs(timeout=timeout))
+    for attempt_index, process_kwargs in enumerate(launch_kwargs):
         try:
             result = subprocess.run(
                 command,
-                **build_adb_process_kwargs(timeout=timeout, close_fds=close_fds),
+                **process_kwargs,
             )
             break
         except subprocess.TimeoutExpired as exc:
@@ -172,7 +203,7 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
         except PermissionError as exc:
             raise ADBCommandError(f"无法执行 adb，请检查权限：{adb_path}") from exc
         except OSError as exc:
-            if close_fds is None and _is_invalid_windows_handle(exc):
+            if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
                 continue
             raise ADBCommandError(f"无法启动 adb：{exc}") from exc
     if result.returncode != 0:

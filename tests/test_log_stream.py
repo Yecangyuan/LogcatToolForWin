@@ -168,6 +168,29 @@ def test_session_hides_windows_adb_process_with_startupinfo(fake_windows_startup
     assert startupinfo.wShowWindow == 0
 
 
+def test_session_retries_invalid_windows_handle_without_startupinfo(fake_windows_startupinfo) -> None:
+    events: queue.Queue = queue.Queue()
+    captured_kwargs: list[dict[str, object]] = []
+
+    def popen_factory(*args, **kwargs):
+        captured_kwargs.append(kwargs)
+        if len(captured_kwargs) < 3:
+            exc = OSError("[WinError 6] 句柄无效。")
+            exc.winerror = 6
+            raise exc
+        return FakePopen()
+
+    session = LogcatSession(["adb", "logcat"], events, popen_factory)
+
+    session.start()
+    session.join()
+
+    assert "startupinfo" in captured_kwargs[0]
+    assert "startupinfo" in captured_kwargs[1]
+    assert "startupinfo" not in captured_kwargs[2]
+    assert "creationflags" not in captured_kwargs[2]
+
+
 def test_session_stop_kills_process_when_terminate_times_out() -> None:
     events: queue.Queue = queue.Queue()
     process = StubbornPopen()

@@ -6,7 +6,7 @@ import subprocess
 import threading
 from typing import Callable, Optional
 
-from logcat_tool_for_win.adb import build_adb_process_kwargs
+from logcat_tool_for_win.adb import _is_invalid_windows_handle, iter_adb_process_kwargs
 from logcat_tool_for_win.models import LogEntry, StreamEvent
 
 THREADTIME_RE = re.compile(
@@ -49,10 +49,15 @@ class LogcatSession:
         self.worker: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        self.process = self.popen_factory(
-            self.command,
-            **build_adb_process_kwargs(bufsize=1),
-        )
+        launch_kwargs = list(iter_adb_process_kwargs(bufsize=1))
+        for attempt_index, process_kwargs in enumerate(launch_kwargs):
+            try:
+                self.process = self.popen_factory(self.command, **process_kwargs)
+                break
+            except OSError as exc:
+                if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
+                    continue
+                raise
         self.events.put(StreamEvent(kind="started"))
         self.worker = threading.Thread(target=self._pump, daemon=True)
         self.worker.start()

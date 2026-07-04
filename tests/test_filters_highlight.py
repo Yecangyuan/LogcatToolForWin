@@ -130,6 +130,23 @@ def test_match_highlight_rules_lowers_raw_line_once_for_insensitive_rules() -> N
     assert raw_line.lower_calls == 1
 
 
+def test_match_highlight_rules_reuses_lowered_insensitive_pattern_across_entries() -> None:
+    pattern = LowerCountingStr("UNIQUE_CRASH_PATTERN_CACHE")
+    rules = [HighlightRule(name="crash", pattern=pattern, foreground="#ff6b6b")]
+
+    for index in range(3):
+        entry = LogEntry(
+            timestamp_text="06-18 10:00:00.000",
+            level="E",
+            tag="MyApp",
+            message=f"unique_crash_pattern_cache happened {index}",
+            raw_line=f"unique_crash_pattern_cache happened {index}",
+        )
+        assert match_highlight_rules(entry, rules) == ("crash",)
+
+    assert pattern.lower_calls == 1
+
+
 def test_default_level_colors_include_error_red() -> None:
     assert DEFAULT_LEVEL_COLORS["E"] == "#ff6b6b"
 

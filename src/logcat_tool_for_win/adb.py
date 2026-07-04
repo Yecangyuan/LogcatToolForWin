@@ -193,6 +193,14 @@ def validate_connect_output(output: str, target: str) -> str:
     raise ADBCommandError(message or f"无法连接 {target}")
 
 
+def _combine_process_output(stdout: str, stderr: str) -> str:
+    parts = [part.rstrip("\n") for part in (stdout, stderr) if part.strip()]
+    if not parts:
+        return ""
+    suffix = "\n" if stdout.endswith("\n") or stderr.endswith("\n") else ""
+    return "\n".join(parts) + suffix
+
+
 def format_connect_error(target: str, error: ADBCommandError) -> ADBCommandError:
     message = str(error).strip()
     if not message:
@@ -268,6 +276,13 @@ def connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -
         try:
             return validate_connect_output(result.stdout, validated_target)
         except ADBCommandError as exc:
+            combined_output = _combine_process_output(result.stdout, result.stderr)
+            if combined_output and combined_output != result.stdout:
+                try:
+                    return validate_connect_output(combined_output, validated_target)
+                except ADBCommandError as combined_exc:
+                    last_error = combined_exc
+                    continue
             last_error = exc
             continue
     if last_error is not None:

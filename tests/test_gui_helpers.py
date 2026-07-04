@@ -707,6 +707,48 @@ def test_connect_tcp_defaults_to_5555_when_port_is_omitted(monkeypatch) -> None:
     assert controller.devices == [device]
 
 
+def test_connect_tcp_prepares_selected_usb_device_before_connecting_target(monkeypatch) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    tcp_device = make_device("192.168.1.111:5555")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.status.active_device_serial = usb_device.serial
+    controller.connect_var.set(tcp_device.serial)
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    def fake_enable_tcpip(serial: str, port: int) -> str:
+        calls.append(("tcpip", (serial, port)))
+        return "restarting in TCP mode port: 5555\n"
+
+    def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+        calls.append(("connect", (target, attempts, delay_seconds)))
+        return f"connected to {target}\n"
+
+    monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(gui, "list_devices", lambda: [usb_device, tcp_device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert calls == [
+        ("tcpip", ("USB123", 5555)),
+        ("connect", ("192.168.1.111:5555", 3, 1.0)),
+    ]
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == tcp_device.serial
+
+
 def test_connect_tcp_keeps_connected_target_when_device_refresh_fails(monkeypatch) -> None:
     controller = make_controller()
     usb_device = make_device("USB123")
@@ -725,7 +767,12 @@ def test_connect_tcp_keeps_connected_target_when_device_refresh_fails(monkeypatc
     def raise_refresh_error():
         raise RuntimeError("[WinError 6] 句柄无效。")
 
-    monkeypatch.setattr(gui, "connect_device", lambda target: f"connected to {target}\n")
+    monkeypatch.setattr(gui, "enable_tcpip", lambda serial, port: "restarting in TCP mode port: 5555\n")
+    monkeypatch.setattr(
+        gui,
+        "connect_device",
+        lambda target, attempts=1, delay_seconds=0.0: f"connected to {target}\n",
+    )
     monkeypatch.setattr(gui, "list_devices", raise_refresh_error)
     controller._run_background_task = fake_run_background_task
 
@@ -757,7 +804,12 @@ def test_connect_tcp_selects_connected_tcp_device_when_usb_was_selected(monkeypa
         captured["on_success"] = on_success
         captured["on_error"] = on_error
 
-    monkeypatch.setattr(gui, "connect_device", lambda target: f"connected to {target}\n")
+    monkeypatch.setattr(gui, "enable_tcpip", lambda serial, port: "restarting in TCP mode port: 5555\n")
+    monkeypatch.setattr(
+        gui,
+        "connect_device",
+        lambda target, attempts=1, delay_seconds=0.0: f"connected to {target}\n",
+    )
     monkeypatch.setattr(gui, "list_devices", lambda: [usb_device, tcp_device])
     controller._run_background_task = fake_run_background_task
 

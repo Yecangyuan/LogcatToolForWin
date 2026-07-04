@@ -19,8 +19,12 @@ class ADBCommandError(RuntimeError):
     pass
 
 
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
 def _suppress_windows_error_dialogs() -> None:
-    if os.name != "nt":
+    if not _is_windows():
         return
     try:
         import ctypes
@@ -32,6 +36,32 @@ def _suppress_windows_error_dialogs() -> None:
         kernel32.SetErrorMode(current_mode | sem_failcriticalerrors | sem_nogpfault_error_box)
     except Exception:
         return
+
+
+def build_adb_process_kwargs(
+    *,
+    timeout: Optional[float] = None,
+    bufsize: Optional[int] = None,
+) -> dict[str, object]:
+    run_kwargs: dict[str, object] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+    }
+    if timeout is not None:
+        run_kwargs["timeout"] = timeout
+    if bufsize is not None:
+        run_kwargs["bufsize"] = bufsize
+    if _is_windows():
+        run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        startupinfo_factory = getattr(subprocess, "STARTUPINFO", None)
+        if startupinfo_factory is not None:
+            startupinfo = startupinfo_factory()
+            startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+            startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+            run_kwargs["startupinfo"] = startupinfo
+    return run_kwargs
 
 
 def resolve_adb_path() -> Path:
@@ -112,14 +142,7 @@ def parse_route_source_ip(output: str) -> str:
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
     _suppress_windows_error_dialogs()
     adb_path = resolve_adb_path()
-    run_kwargs = {
-        "capture_output": True,
-        "stdin": subprocess.DEVNULL,
-        "text": True,
-        "timeout": timeout,
-    }
-    if os.name == "nt":
-        run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    run_kwargs = build_adb_process_kwargs(timeout=timeout)
 
     try:
         result = subprocess.run(

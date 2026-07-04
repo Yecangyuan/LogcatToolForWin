@@ -6,6 +6,7 @@ import subprocess
 import threading
 from typing import Callable, Optional
 
+from logcat_tool_for_win.adb import build_adb_process_kwargs
 from logcat_tool_for_win.models import LogEntry, StreamEvent
 
 THREADTIME_RE = re.compile(
@@ -50,11 +51,7 @@ class LogcatSession:
     def start(self) -> None:
         self.process = self.popen_factory(
             self.command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            **build_adb_process_kwargs(bufsize=1),
         )
         self.events.put(StreamEvent(kind="started"))
         self.worker = threading.Thread(target=self._pump, daemon=True)

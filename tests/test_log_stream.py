@@ -148,6 +148,26 @@ def test_session_does_not_inherit_invalid_gui_stdin() -> None:
     assert captured_kwargs["stdin"] == subprocess.DEVNULL
 
 
+def test_session_hides_windows_adb_process_with_startupinfo(fake_windows_startupinfo) -> None:
+    events: queue.Queue = queue.Queue()
+    captured_kwargs = {}
+
+    def popen_factory(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return FakePopen()
+
+    session = LogcatSession(["adb", "logcat"], events, popen_factory)
+
+    session.start()
+    session.join()
+
+    startupinfo = captured_kwargs["startupinfo"]
+    assert captured_kwargs["creationflags"] == 0x08000000
+    assert isinstance(startupinfo, fake_windows_startupinfo)
+    assert startupinfo.dwFlags & 0x00000001
+    assert startupinfo.wShowWindow == 0
+
+
 def test_session_stop_kills_process_when_terminate_times_out() -> None:
     events: queue.Queue = queue.Queue()
     process = StubbornPopen()

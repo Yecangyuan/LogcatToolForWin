@@ -923,8 +923,11 @@ class LogcatToolGUI:
             else:
                 self._append_visible_entries(new_visible_entries)
 
-        self.status.queue_depth = self.events.qsize()
-        self._update_status()
+        queue_depth = self.events.qsize()
+        status_changed = processed > 0 or self.status.queue_depth != queue_depth
+        self.status.queue_depth = queue_depth
+        if status_changed:
+            self._update_status()
         delay = 0 if self.status.queue_depth else QUEUE_DRAIN_MS
         self.root.after(delay, self._poll_stream)
 

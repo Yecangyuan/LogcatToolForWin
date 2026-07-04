@@ -241,6 +241,19 @@ def test_poll_stream_ignores_late_line_events_after_stop() -> None:
     assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
 
 
+def test_poll_stream_skips_status_update_when_idle_queue_is_unchanged() -> None:
+    controller = make_controller()
+    controller.status.queue_depth = 0
+    controller.status_var.set("stable status")
+    controller.summary_var.set("stable summary")
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert controller.status_var.get() == "stable status"
+    assert controller.summary_var.get() == "stable summary"
+    assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+
+
 def test_poll_stream_appends_new_visible_lines_without_full_redraw() -> None:
     controller = make_controller()
     controller.status.stream_state = "streaming"

@@ -1,3 +1,4 @@
+from logcat_tool_for_win import filters as filters_module
 from logcat_tool_for_win.filters import (
     build_logcat_filter_spec,
     entry_matches,
@@ -16,6 +17,11 @@ class LowerCountingStr(str):
     def lower(self) -> str:
         self.lower_calls += 1
         return super().lower()
+
+
+class ExplodingIndexLevelOrder(tuple):
+    def index(self, value: object, start: int = 0, stop: int = 9223372036854775807) -> int:
+        raise AssertionError("LEVEL_ORDER.index should not be used in the log filter hot path")
 
 
 def test_build_logcat_filter_spec_uses_exact_tag_filters() -> None:
@@ -81,6 +87,24 @@ def test_entry_matches_rejects_unknown_minimum_level_without_crashing() -> None:
     state = FilterState(minimum_level="?", tag_filters=("MyApp",), keyword="crash")
 
     assert entry_matches(entry, state) is False
+
+
+def test_entry_matches_uses_constant_level_rank_lookup(monkeypatch) -> None:
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="E",
+        tag="MyApp",
+        message="fatal crash happened",
+        raw_line="raw fatal crash happened",
+    )
+    state = FilterState(minimum_level="W", tag_filters=("MyApp",))
+    monkeypatch.setattr(
+        filters_module,
+        "LEVEL_ORDER",
+        ExplodingIndexLevelOrder(("V", "D", "I", "W", "E", "F")),
+    )
+
+    assert entry_matches(entry, state) is True
 
 
 def test_entry_matches_skips_keyword_work_when_level_or_tag_rejects_entry() -> None:

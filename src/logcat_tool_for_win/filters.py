@@ -6,6 +6,7 @@ from typing import Optional
 from logcat_tool_for_win.models import FilterState, LogEntry
 
 LEVEL_ORDER = ("V", "D", "I", "W", "E", "F")
+LEVEL_RANKS = {level: rank for rank, level in enumerate(LEVEL_ORDER)}
 
 
 def _normalize_level(level: str) -> str:
@@ -13,10 +14,7 @@ def _normalize_level(level: str) -> str:
 
 
 def _level_rank(level: str) -> Optional[int]:
-    normalized = _normalize_level(level)
-    if normalized not in LEVEL_ORDER:
-        return None
-    return LEVEL_ORDER.index(normalized)
+    return LEVEL_RANKS.get(_normalize_level(level))
 
 
 def normalize_tag_filters(raw: str) -> tuple[str, ...]:

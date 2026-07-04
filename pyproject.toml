@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Windows GUI Android logcat viewer with bundled adb."
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
+license = "MIT"
 authors = [{name = "Simley"}]
 dependencies = []
 

@@ -616,6 +616,40 @@ def test_connect_tcp_defaults_to_5555_when_port_is_omitted(monkeypatch) -> None:
     assert controller.devices == [device]
 
 
+def test_connect_tcp_keeps_connected_target_when_device_refresh_fails(monkeypatch) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    target = "192.168.1.111:5555"
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.connect_var.set(target)
+    captured: dict[str, object] = {}
+
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    def raise_refresh_error():
+        raise RuntimeError("[WinError 6] 句柄无效。")
+
+    monkeypatch.setattr(gui, "connect_device", lambda target: f"connected to {target}\n")
+    monkeypatch.setattr(gui, "list_devices", raise_refresh_error)
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert [device.serial for device in controller.devices] == ["USB123", target]
+    assert controller.device_var.get() == f"{target} [tcp]"
+    assert controller.status.active_device_serial == target
+    assert controller.status.last_error == (
+        "connected to 192.168.1.111:5555；设备列表刷新失败：[WinError 6] 句柄无效。"
+    )
+
+
 def test_connect_tcp_selects_connected_tcp_device_when_usb_was_selected(monkeypatch) -> None:
     controller = make_controller()
     usb_device = make_device("USB123")

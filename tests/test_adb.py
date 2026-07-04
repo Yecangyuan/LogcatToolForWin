@@ -371,3 +371,27 @@ def test_run_adb_hides_windows_adb_process_with_startupinfo(
     assert isinstance(startupinfo, fake_windows_startupinfo)
     assert startupinfo.dwFlags & 0x00000001
     assert startupinfo.wShowWindow == 0
+
+
+def test_run_adb_avoids_windows_close_fds_handle_list(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_windows_startupinfo,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    captured_kwargs = {}
+
+    def fake_run(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("C:/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    run_adb(["connect", "192.168.0.8:5555"])
+
+    assert captured_kwargs["close_fds"] is False

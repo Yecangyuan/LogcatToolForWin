@@ -324,6 +324,17 @@ def test_parse_route_source_ip_returns_first_non_loopback_src() -> None:
     assert parse_route_source_ip(output) == "192.168.1.111"
 
 
+def test_parse_route_source_ip_prefers_ipv4_src_for_wireless_adb() -> None:
+    output = "\n".join(
+        [
+            "2001:db8::/64 dev wlan0 proto ra metric 1024 pref medium src 2001:db8::111",
+            "192.168.1.0/24 dev wlan0 proto kernel scope link src 192.168.1.111",
+        ]
+    )
+
+    assert parse_route_source_ip(output) == "192.168.1.111"
+
+
 def test_get_device_route_ip_parses_adb_shell_ip_route(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

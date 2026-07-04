@@ -211,6 +211,7 @@ def format_connect_error(target: str, error: ADBCommandError) -> ADBCommandError
 
 
 def parse_route_source_ip(output: str) -> str:
+    fallback_address = ""
     for line in output.splitlines():
         parts = line.split()
         if "src" not in parts:
@@ -223,8 +224,11 @@ def parse_route_source_ip(output: str) -> str:
         except ValueError:
             continue
         if not address.is_loopback:
-            return str(address)
-    return ""
+            if address.version == 4:
+                return str(address)
+            if not fallback_address:
+                fallback_address = str(address)
+    return fallback_address
 
 
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:

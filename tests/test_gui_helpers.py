@@ -922,6 +922,37 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
     assert controller.status.last_error == "connected to 192.168.1.111:5555"
 
 
+def test_enable_wireless_adb_keeps_connected_target_when_device_refresh_fails(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    target = "192.168.1.111:5555"
+
+    controller.devices = [selected_device]
+    controller.device_var.set(gui.device_label(selected_device))
+    controller.status.active_device_serial = selected_device.serial
+    controller._current_device = lambda: selected_device
+    controller._run_background_task = lambda _message, action, on_success, _on_error: on_success(action())
+
+    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.111")
+    monkeypatch.setattr(gui, "enable_tcpip", lambda serial, port: "restarting in TCP mode port: 5555\n")
+    monkeypatch.setattr(gui, "connect_device", lambda target, attempts, delay_seconds: f"connected to {target}\n")
+
+    def raise_refresh_error():
+        raise RuntimeError("[WinError 6] 句柄无效。")
+
+    monkeypatch.setattr(gui, "list_devices", raise_refresh_error)
+
+    gui.LogcatToolGUI.enable_wireless_adb(controller)
+
+    assert controller.connect_var.get() == target
+    assert [device.serial for device in controller.devices] == ["USB123", target]
+    assert controller.device_var.get() == f"{target} [tcp]"
+    assert controller.status.active_device_serial == target
+    assert controller.status.last_error == (
+        "connected to 192.168.1.111:5555；设备列表刷新失败：[WinError 6] 句柄无效。"
+    )
+
+
 def test_enable_wireless_adb_explains_manual_connect_when_ip_is_unknown(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")

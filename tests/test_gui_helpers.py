@@ -583,6 +583,30 @@ def test_start_stream_uses_unfiltered_capture_command_for_raw_export(monkeypatch
     assert controller.filters == ui_filters
 
 
+def test_start_stream_resets_stale_queue_depth(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    controller.status.queue_depth = 42
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: None
+    controller._update_status = lambda: None
+
+    class DummySession:
+        def __init__(self, command: list[str], events: queue.Queue[StreamEvent]) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(gui, "build_logcat_command", lambda serial, filter_state: ["adb", "-s", serial, "logcat"])
+    monkeypatch.setattr(gui, "LogcatSession", DummySession)
+    monkeypatch.setattr(gui, "messagebox", SimpleNamespace(showwarning=lambda *args: None, showerror=lambda *args: None))
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert controller.status.queue_depth == 0
+
+
 def test_refresh_devices_failure_clears_stale_devices_and_selection(monkeypatch) -> None:
     controller = make_controller()
     stale_device = make_device("R58M12345")

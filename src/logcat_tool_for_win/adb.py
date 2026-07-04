@@ -42,6 +42,7 @@ def build_adb_process_kwargs(
     *,
     timeout: Optional[float] = None,
     bufsize: Optional[int] = None,
+    close_fds: Optional[bool] = None,
 ) -> dict[str, object]:
     run_kwargs: dict[str, object] = {
         "stdin": subprocess.DEVNULL,
@@ -54,7 +55,7 @@ def build_adb_process_kwargs(
     if bufsize is not None:
         run_kwargs["bufsize"] = bufsize
     if _is_windows():
-        run_kwargs["close_fds"] = False
+        run_kwargs["close_fds"] = False if close_fds is None else close_fds
         run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         startupinfo_factory = getattr(subprocess, "STARTUPINFO", None)
         if startupinfo_factory is not None:
@@ -63,6 +64,10 @@ def build_adb_process_kwargs(
             startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
             run_kwargs["startupinfo"] = startupinfo
     return run_kwargs
+
+
+def _is_invalid_windows_handle(exc: OSError) -> bool:
+    return _is_windows() and getattr(exc, "winerror", None) == 6
 
 
 def resolve_adb_path() -> Path:
@@ -143,21 +148,25 @@ def parse_route_source_ip(output: str) -> str:
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
     _suppress_windows_error_dialogs()
     adb_path = resolve_adb_path()
-    run_kwargs = build_adb_process_kwargs(timeout=timeout)
+    command = [str(adb_path), *args]
 
-    try:
-        result = subprocess.run(
-            [str(adb_path), *args],
-            **run_kwargs,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ADBCommandError(f"ADB 命令超时（{timeout:g} 秒）：{' '.join(args)}") from exc
-    except FileNotFoundError as exc:
-        raise ADBCommandError(f"未找到 adb：{adb_path}") from exc
-    except PermissionError as exc:
-        raise ADBCommandError(f"无法执行 adb，请检查权限：{adb_path}") from exc
-    except OSError as exc:
-        raise ADBCommandError(f"无法启动 adb：{exc}") from exc
+    for close_fds in (None, True):
+        try:
+            result = subprocess.run(
+                command,
+                **build_adb_process_kwargs(timeout=timeout, close_fds=close_fds),
+            )
+            break
+        except subprocess.TimeoutExpired as exc:
+            raise ADBCommandError(f"ADB 命令超时（{timeout:g} 秒）：{' '.join(args)}") from exc
+        except FileNotFoundError as exc:
+            raise ADBCommandError(f"未找到 adb：{adb_path}") from exc
+        except PermissionError as exc:
+            raise ADBCommandError(f"无法执行 adb，请检查权限：{adb_path}") from exc
+        except OSError as exc:
+            if close_fds is None and _is_invalid_windows_handle(exc):
+                continue
+            raise ADBCommandError(f"无法启动 adb：{exc}") from exc
     if result.returncode != 0:
         message = (
             result.stderr.strip()

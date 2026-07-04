@@ -9,6 +9,14 @@ def test_project_metadata_allows_python38_builds() -> None:
     assert 'target-version = "py38"' in pyproject
 
 
+def test_project_license_metadata_stays_legacy_compatible() -> None:
+    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert '"setuptools>=69.0,<77"' in pyproject
+    assert 'license = {text = "MIT"}' in pyproject
+    assert 'license = "MIT"' not in pyproject
+
+
 def test_source_avoids_pep604_union_syntax_for_legacy_builds() -> None:
     offenders: list[str] = []
 

@@ -395,3 +395,33 @@ def test_run_adb_avoids_windows_close_fds_handle_list(
     run_adb(["connect", "192.168.0.8:5555"])
 
     assert captured_kwargs["close_fds"] is False
+
+
+def test_run_adb_retries_invalid_windows_handle_with_isolated_fds(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_windows_startupinfo,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    captured_kwargs: list[dict[str, object]] = []
+
+    def fake_run(*args, **kwargs):
+        captured_kwargs.append(kwargs)
+        if len(captured_kwargs) == 1:
+            exc = OSError("[WinError 6] 句柄无效。")
+            exc.winerror = 6
+            raise exc
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("C:/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    result = run_adb(["connect", "192.168.0.8:5555"])
+
+    assert result is completed
+    assert captured_kwargs[0]["close_fds"] is False
+    assert captured_kwargs[1]["close_fds"] is True

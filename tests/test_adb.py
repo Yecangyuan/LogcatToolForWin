@@ -118,6 +118,27 @@ def test_connect_device_returns_stdout_string(
     assert connect_device("192.168.0.8:5555") == "connected to 192.168.0.8:5555\n"
 
 
+def test_connect_device_accepts_success_after_daemon_startup_banner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = "\n".join(
+        [
+            "* daemon not running; starting now at tcp:5037",
+            "* daemon started successfully",
+            "connected to 192.168.0.8:5555",
+        ]
+    )
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout=f"{output}\n",
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    assert connect_device("192.168.0.8:5555") == f"{output}\n"
+
+
 def test_connect_device_rejects_failed_connect_output_with_zero_exit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

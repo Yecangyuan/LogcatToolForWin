@@ -64,6 +64,17 @@ class TriggeringVar(DummyVar):
         self.on_set()
 
 
+class LowerCountingStr(str):
+    def __new__(cls, value: str) -> "LowerCountingStr":
+        instance = super().__new__(cls, value)
+        instance.lower_calls = 0
+        return instance
+
+    def lower(self) -> str:
+        self.lower_calls += 1
+        return super().lower()
+
+
 class DummyCombo:
     def __init__(self) -> None:
         self.values: tuple[str, ...] = ()
@@ -398,6 +409,40 @@ def test_poll_stream_reuses_filter_snapshot_for_line_batch() -> None:
     assert len(controller.visible_lines) == 3
     assert controller.filters is filters
     assert controller.highlight_rules is rules
+
+
+def test_poll_stream_prepares_keyword_filter_once_for_line_batch() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    for index in range(3):
+        controller.events.put(StreamEvent(kind="line", entry=make_entry(f"crash {index}")))
+    keyword = LowerCountingStr("CRASH")
+    filters = FilterState(minimum_level="V", keyword=keyword)
+
+    controller._current_filters = lambda: filters
+    controller._current_highlight_rules = lambda: []
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert keyword.lower_calls == 1
+    assert len(controller.visible_lines) == 3
+
+
+def test_refresh_visible_entries_prepares_keyword_filter_once_for_raw_log_batch() -> None:
+    controller = make_controller()
+    for index in range(3):
+        controller.raw_lines.append(make_entry(f"crash {index}"))
+    keyword = LowerCountingStr("CRASH")
+    filters = FilterState(minimum_level="V", keyword=keyword)
+
+    controller._current_filters = lambda: filters
+    controller._current_highlight_rules = lambda: []
+
+    gui.LogcatToolGUI._refresh_visible_entries(controller)
+
+    assert keyword.lower_calls == 1
+    assert len(controller.visible_lines) == 3
 
 
 def test_load_named_preset_batches_filter_refreshes() -> None:

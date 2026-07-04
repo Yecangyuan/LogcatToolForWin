@@ -216,11 +216,8 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
                 continue
             raise ADBCommandError(f"无法启动 adb：{exc}") from exc
     if result.returncode != 0:
-        message = (
-            result.stderr.strip()
-            or result.stdout.strip()
-            or f"adb 退出，代码：{result.returncode}"
-        )
+        message_parts = [part for part in (result.stderr.strip(), result.stdout.strip()) if part]
+        message = "\n".join(message_parts) or f"adb 退出，代码：{result.returncode}"
         raise ADBCommandError(message)
     return result
 

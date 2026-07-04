@@ -7,6 +7,17 @@ from logcat_tool_for_win.highlight import DEFAULT_LEVEL_COLORS, match_highlight_
 from logcat_tool_for_win.models import FilterState, HighlightRule, LogEntry
 
 
+class LowerCountingStr(str):
+    def __new__(cls, value: str) -> "LowerCountingStr":
+        instance = super().__new__(cls, value)
+        instance.lower_calls = 0
+        return instance
+
+    def lower(self) -> str:
+        self.lower_calls += 1
+        return super().lower()
+
+
 def test_build_logcat_filter_spec_uses_exact_tag_filters() -> None:
     assert build_logcat_filter_spec("I", ("ActivityManager", "MyApp")) == [
         "ActivityManager:I",
@@ -83,6 +94,25 @@ def test_match_highlight_rules_returns_matching_names() -> None:
     rules = [HighlightRule(name="ANR", pattern="ANR", foreground="#ffcc00")]
 
     assert "ANR" in match_highlight_rules(entry, rules)
+
+
+def test_match_highlight_rules_lowers_raw_line_once_for_insensitive_rules() -> None:
+    raw_line = LowerCountingStr("ANR detected and crash happened")
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="W",
+        tag="ActivityManager",
+        message="ANR detected",
+        raw_line=raw_line,
+    )
+    rules = [
+        HighlightRule(name="ANR", pattern="anr", foreground="#ffcc00"),
+        HighlightRule(name="crash", pattern="CRASH", foreground="#ff6b6b"),
+        HighlightRule(name="exact", pattern="ANR detected", foreground="#ffffff", case_sensitive=True),
+    ]
+
+    assert match_highlight_rules(entry, rules) == ("ANR", "crash", "exact")
+    assert raw_line.lower_calls == 1
 
 
 def test_default_level_colors_include_error_red() -> None:

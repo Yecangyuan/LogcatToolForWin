@@ -19,7 +19,6 @@ else:
     TK_IMPORT_ERROR = None
 
 from logcat_tool_for_win.adb import (
-    ADBCommandError,
     DEFAULT_TCP_PORT,
     build_logcat_command,
     clear_logcat,
@@ -600,11 +599,8 @@ class LogcatToolGUI:
             self.connect_var.set(target)
 
         existing_devices = list(self.devices)
-        selected_usb_serial = self._preferred_ready_usb_serial()
-        target_port = extract_tcp_port(target, DEFAULT_TCP_PORT)
-
         def action() -> tuple[str, str, list[DeviceInfo]]:
-            message = self._connect_tcp_target(target, selected_usb_serial, target_port).strip()
+            message = self._connect_tcp_target(target).strip()
             message = message or f"已连接 {target}"
             try:
                 devices = list_devices()
@@ -707,30 +703,8 @@ class LogcatToolGUI:
         self.status.last_error = str(exc)
         self._update_status()
 
-    def _connect_tcp_target(self, target: str, usb_serial: str, port: int) -> str:
-        try:
-            return connect_device(target, attempts=3, delay_seconds=1.0)
-        except ADBCommandError:
-            if not usb_serial:
-                raise
-        enable_tcpip(usb_serial, port)
+    def _connect_tcp_target(self, target: str) -> str:
         return connect_device(target, attempts=3, delay_seconds=1.0)
-
-    def _preferred_ready_usb_serial(self) -> str:
-        try:
-            device = self._current_device()
-        except ValueError:
-            device = None
-        if device is not None and device.state == "device" and device.transport == "usb":
-            return device.serial
-        ready_usb_devices = [
-            candidate
-            for candidate in self.devices
-            if candidate.state == "device" and candidate.transport == "usb"
-        ]
-        if len(ready_usb_devices) == 1:
-            return ready_usb_devices[0].serial
-        return ""
 
     def _current_device(self) -> DeviceInfo:
         current = self.device_var.get()

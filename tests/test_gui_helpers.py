@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import logcat_tool_for_win.gui as gui
+from logcat_tool_for_win.adb import ADBCommandError
 from logcat_tool_for_win.models import (
     AppStatus,
     DeviceInfo,
@@ -1050,7 +1051,7 @@ def test_connect_tcp_prepares_selected_usb_device_before_connecting_target(monke
     assert controller.status.active_device_serial == tcp_device.serial
 
 
-def test_connect_tcp_falls_back_to_selected_usb_device_after_direct_connect_failure(
+def test_connect_tcp_does_not_fall_back_to_selected_usb_device_after_direct_connect_failure(
     monkeypatch,
 ) -> None:
     controller = make_controller()
@@ -1074,9 +1075,7 @@ def test_connect_tcp_falls_back_to_selected_usb_device_after_direct_connect_fail
 
     def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
         calls.append(("connect", (target, attempts, delay_seconds)))
-        if len([call for call in calls if call[0] == "connect"]) == 1:
-            raise gui.ADBCommandError("connection refused")
-        return f"connected to {target}\n"
+        raise ADBCommandError("connection refused")
 
     monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
     monkeypatch.setattr(gui, "connect_device", fake_connect_device)
@@ -1084,18 +1083,14 @@ def test_connect_tcp_falls_back_to_selected_usb_device_after_direct_connect_fail
     controller._run_background_task = fake_run_background_task
 
     gui.LogcatToolGUI.connect_tcp(controller)
-    result = captured["action"]()
-    captured["on_success"](result)
+    with pytest.raises(ADBCommandError, match="connection refused"):
+        captured["action"]()
 
-    assert calls == [
-        ("connect", ("192.168.1.111:5555", 3, 1.0)),
-        ("tcpip", ("USB123", 5555)),
-        ("connect", ("192.168.1.111:5555", 3, 1.0)),
-    ]
-    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert calls == [("connect", ("192.168.1.111:5555", 3, 1.0))]
+    assert controller.device_var.get() == gui.device_label(usb_device)
 
 
-def test_connect_tcp_falls_back_to_only_ready_usb_device_without_manual_selection(
+def test_connect_tcp_does_not_fall_back_to_only_ready_usb_device_without_manual_selection(
     monkeypatch,
 ) -> None:
     controller = make_controller()
@@ -1118,9 +1113,7 @@ def test_connect_tcp_falls_back_to_only_ready_usb_device_without_manual_selectio
 
     def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
         calls.append(("connect", (target, attempts, delay_seconds)))
-        if len([call for call in calls if call[0] == "connect"]) == 1:
-            raise gui.ADBCommandError("connection refused")
-        return f"connected to {target}\n"
+        raise ADBCommandError("connection refused")
 
     monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
     monkeypatch.setattr(gui, "connect_device", fake_connect_device)
@@ -1128,15 +1121,11 @@ def test_connect_tcp_falls_back_to_only_ready_usb_device_without_manual_selectio
     controller._run_background_task = fake_run_background_task
 
     gui.LogcatToolGUI.connect_tcp(controller)
-    result = captured["action"]()
-    captured["on_success"](result)
+    with pytest.raises(ADBCommandError, match="connection refused"):
+        captured["action"]()
 
-    assert calls == [
-        ("connect", ("192.168.1.111:5555", 3, 1.0)),
-        ("tcpip", ("USB123", 5555)),
-        ("connect", ("192.168.1.111:5555", 3, 1.0)),
-    ]
-    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert calls == [("connect", ("192.168.1.111:5555", 3, 1.0))]
+    assert controller.device_var.get() == ""
 
 
 def test_connect_tcp_keeps_connected_target_when_device_refresh_fails(monkeypatch) -> None:

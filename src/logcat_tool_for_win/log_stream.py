@@ -105,12 +105,31 @@ class LogcatSession:
     def stop(self) -> None:
         if self.process is None:
             return
-        self.process.terminate()
+        try:
+            self.process.terminate()
+        except OSError as exc:
+            if _is_invalid_windows_handle(exc):
+                return
+            raise
         try:
             self.process.wait(timeout=5)
+        except OSError as exc:
+            if _is_invalid_windows_handle(exc):
+                return
+            raise
         except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait(timeout=5)
+            try:
+                self.process.kill()
+            except OSError as exc:
+                if _is_invalid_windows_handle(exc):
+                    return
+                raise
+            try:
+                self.process.wait(timeout=5)
+            except OSError as exc:
+                if _is_invalid_windows_handle(exc):
+                    return
+                raise
 
     def join(self) -> None:
         if self.worker is not None:

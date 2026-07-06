@@ -45,6 +45,37 @@ class StubbornPopen:
         return 0
 
 
+class InvalidHandleOnTerminatePopen:
+    def __init__(self) -> None:
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO("")
+        self.wait_calls = 0
+
+    def terminate(self) -> None:
+        exc = OSError("[WinError 6] 句柄无效。")
+        exc.winerror = 6
+        raise exc
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls += 1
+        return 0
+
+
+class InvalidHandleOnWaitPopen:
+    def __init__(self) -> None:
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO("")
+        self.terminated = False
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        exc = OSError("[WinError 6] 句柄无效。")
+        exc.winerror = 6
+        raise exc
+
+
 class RaisingFactory:
     def __call__(self, *args, **kwargs):
         raise RuntimeError("launch failed")
@@ -284,6 +315,30 @@ def test_session_stop_kills_process_when_terminate_times_out() -> None:
     assert process.terminated is True
     assert process.killed is True
     assert process.wait_timeouts == [5, 5]
+
+
+def test_session_stop_ignores_invalid_handle_when_process_is_already_gone(monkeypatch) -> None:
+    events: queue.Queue = queue.Queue()
+    process = InvalidHandleOnTerminatePopen()
+    session = LogcatSession(["adb", "logcat"], events, lambda *args, **kwargs: process)
+    monkeypatch.setattr("logcat_tool_for_win.log_stream._is_invalid_windows_handle", lambda exc: True)
+
+    session.start()
+    session.stop()
+
+    assert process.wait_calls == 0
+
+
+def test_session_stop_ignores_invalid_handle_while_waiting_for_exit(monkeypatch) -> None:
+    events: queue.Queue = queue.Queue()
+    process = InvalidHandleOnWaitPopen()
+    session = LogcatSession(["adb", "logcat"], events, lambda *args, **kwargs: process)
+    monkeypatch.setattr("logcat_tool_for_win.log_stream._is_invalid_windows_handle", lambda exc: True)
+
+    session.start()
+    session.stop()
+
+    assert process.terminated is True
 
 
 def test_session_drains_stderr_while_stdout_is_still_active() -> None:

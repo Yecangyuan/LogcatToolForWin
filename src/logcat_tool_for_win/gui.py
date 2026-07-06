@@ -773,7 +773,7 @@ class LogcatToolGUI:
         try:
             devices = list_devices()
         except Exception as exc:
-            self._handle_refresh_devices_error(exc)
+            self._handle_user_refresh_devices_error(exc)
         else:
             self._apply_devices(devices)
 
@@ -782,9 +782,13 @@ class LogcatToolGUI:
             "正在刷新设备...",
             list_devices,
             self._apply_devices,
-            self._handle_refresh_devices_error,
+            self._handle_user_refresh_devices_error,
             task_key=DEVICE_SYNC_TASK_KEY,
         )
+
+    def _handle_user_refresh_devices_error(self, exc: Exception) -> None:
+        self._handle_refresh_devices_error(exc)
+        self._show_adb_launch_recovery_prompt(str(exc))
 
     def connect_tcp(self) -> None:
         raw_target = self.connect_var.get().strip()

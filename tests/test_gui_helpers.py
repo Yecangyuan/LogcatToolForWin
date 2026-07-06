@@ -1276,6 +1276,55 @@ def test_refresh_devices_failure_preserves_stale_devices_and_selection(monkeypat
     assert "adb unavailable" in controller.status.last_error
 
 
+def test_refresh_devices_offers_to_switch_adb_path_for_launch_failures(monkeypatch) -> None:
+    controller = make_controller()
+    stale_device = make_device("R58M12345")
+    stale_label = gui.device_label(stale_device)
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    def raise_refresh_error() -> list[DeviceInfo]:
+        raise RuntimeError("无法启动 adb：[WinError 6] 句柄无效。")
+
+    monkeypatch.setattr(gui, "list_devices", raise_refresh_error)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.refresh_devices(controller)
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.adb_ready is False
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
     controller = make_controller()
     device = make_device("R58M12345")
@@ -1300,6 +1349,62 @@ def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
     assert controller.devices == [device]
     assert controller.device_var.get() == gui.device_label(device)
     assert controller.status.adb_path == "C:/platform-tools/adb.exe"
+
+
+def test_refresh_devices_async_offers_to_switch_adb_path_for_launch_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    stale_device = make_device("R58M12345")
+    stale_label = gui.device_label(stale_device)
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+    captured: dict[str, object] = {}
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.refresh_devices_async(controller)
+    captured["on_error"](RuntimeError("无法启动 adb：[WinError 6] 句柄无效。"))
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.adb_ready is False
+    assert controller.status.last_error == prompts[0][1]
 
 
 def test_apply_devices_aligns_selection_to_active_stream_target() -> None:

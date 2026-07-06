@@ -411,7 +411,7 @@ def test_poll_stream_ignores_late_line_events_after_stop() -> None:
 
     assert appended == []
     assert controller.status.queue_depth == 0
-    assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+    assert controller.root.after_calls == []
 
 
 def test_poll_stream_skips_status_update_when_idle_queue_is_unchanged() -> None:
@@ -424,7 +424,7 @@ def test_poll_stream_skips_status_update_when_idle_queue_is_unchanged() -> None:
 
     assert controller.status_var.get() == "stable status"
     assert controller.summary_var.get() == "stable summary"
-    assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+    assert controller.root.after_calls == []
 
 
 def test_update_status_skips_redundant_variable_sets() -> None:
@@ -1088,6 +1088,7 @@ def test_start_stream_resets_stale_queue_depth(monkeypatch) -> None:
     gui.LogcatToolGUI.start_stream(controller)
 
     assert controller.status.queue_depth == 0
+    assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
 
 
 def test_start_stream_warns_when_adb_is_not_ready(monkeypatch) -> None:

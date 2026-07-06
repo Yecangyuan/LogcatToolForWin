@@ -188,6 +188,7 @@ class LogcatToolGUI:
         self._background_task_versions: dict[str, int] = {}
         self._filter_refresh_suspended = False
         self._filter_trace_ids: list[tuple[tk.Variable, str]] = []
+        self._poll_stream_callback_id: Optional[object] = None
 
         self.device_var = tk.StringVar()
         self.connect_var = tk.StringVar(value=recent_target)
@@ -210,7 +211,6 @@ class LogcatToolGUI:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(0, self.refresh_devices_async)
         self._refresh_visible_entries()
-        self.root.after(QUEUE_DRAIN_MS, self._poll_stream)
 
     def _configure_style(self) -> None:
         style = ttk.Style(self.root)
@@ -680,6 +680,15 @@ class LogcatToolGUI:
 
     def _schedule_ui_callback(self, delay: int, callback: Callable[[], None]) -> bool:
         return self._schedule_ui_callback_handle(delay, callback) is not None
+
+    def _ensure_poll_stream_scheduled(self, delay: int = QUEUE_DRAIN_MS) -> bool:
+        if getattr(self, "_poll_stream_callback_id", None) is not None:
+            return False
+        callback_id = self._schedule_ui_callback_handle(delay, self._poll_stream)
+        if callback_id is None:
+            return False
+        self._poll_stream_callback_id = callback_id
+        return True
 
     def _refresh_preset_choices(self) -> None:
         names = sorted(self.named_presets)
@@ -1369,6 +1378,7 @@ class LogcatToolGUI:
                 self.events,
             )
             self.session.start()
+            self._ensure_poll_stream_scheduled()
         except Exception as exc:
             self.session = None
             self.manual_stop = True
@@ -1706,6 +1716,7 @@ class LogcatToolGUI:
         self._update_status()
 
     def _poll_stream(self) -> None:
+        self._poll_stream_callback_id = None
         updated = False
         full_render_required = False
         status_dirty = False
@@ -1767,8 +1778,9 @@ class LogcatToolGUI:
         self.status.queue_depth = queue_depth
         if status_changed:
             self._update_status()
-        delay = 0 if self.status.queue_depth else QUEUE_DRAIN_MS
-        self._schedule_ui_callback(delay, self._poll_stream)
+        if self.session is not None or self.status.stream_state == "streaming" or self.status.queue_depth:
+            delay = 0 if self.status.queue_depth else QUEUE_DRAIN_MS
+            self._ensure_poll_stream_scheduled(delay)
 
     def _append_entry(
         self,

@@ -27,6 +27,12 @@ TCP_CONNECT_FAILURE_HINT = (
     "如果还没有通过 USB 开启无线 ADB，请先用 USB 连上后点“USB 开启无线”；"
     "并确认端口未被防火墙拦截。"
 )
+ADB_INVALID_HANDLE_HINT = (
+    "当前 adb 在这个 Windows 环境里无法正常启动。"
+    "如果你在较老的 Windows 上运行，请优先使用 Releases 里的 "
+    "logcat-tool-for-win-legacy-win7.zip；"
+    "也可以安装可用的 Android platform-tools，并用 LOGCAT_TOOL_ADB 指向 adb.exe。"
+)
 DEVICE_IP_DISCOVERY_COMMANDS = (
     (["shell", "ip", "route"], "route"),
     (["shell", "ip", "-f", "inet", "addr", "show", "wlan0"], "ipv4"),
@@ -225,6 +231,15 @@ def _remember_runtime_adb_path(adb_path: Path) -> None:
     _runtime_adb_path = adb_path
 
 
+def _format_invalid_handle_adb_error(adb_paths: list[Path], exc: OSError) -> ADBCommandError:
+    attempted_paths = "；".join(str(path) for path in adb_paths)
+    return ADBCommandError(
+        f"无法启动 adb：{exc}\n"
+        f"已尝试的 adb：{attempted_paths}\n"
+        f"{ADB_INVALID_HANDLE_HINT}"
+    )
+
+
 def validate_tcp_target(target: str) -> str:
     stripped = target.strip()
     if ":" not in stripped:
@@ -376,6 +391,8 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
                     continue
                 if _is_invalid_windows_handle(exc) and path_index + 1 < len(adb_paths):
                     break
+                if _is_invalid_windows_handle(exc):
+                    raise _format_invalid_handle_adb_error(adb_paths, exc) from exc
                 raise ADBCommandError(f"无法启动 adb：{exc}") from exc
             _remember_runtime_adb_path(adb_path)
             if result.returncode != 0:

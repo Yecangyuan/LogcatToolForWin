@@ -195,6 +195,45 @@ def test_build_logcat_command_uses_runtime_fallback_adb_after_invalid_handle_rec
     assert command[0] == str(path_adb)
 
 
+def test_run_adb_reports_actionable_hint_when_all_candidate_adb_paths_fail_invalid_handle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_windows_startupinfo,
+) -> None:
+    embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
+    embedded_adb.parent.mkdir(parents=True)
+    embedded_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    path_adb.parent.mkdir(parents=True)
+    path_adb.write_text("adb", encoding="utf-8")
+    frozen_sys = SimpleNamespace(
+        executable=str(tmp_path / "logcat-tool-for-win.exe"),
+        frozen=True,
+        _MEIPASS=str(tmp_path / "_MEI12345"),
+    )
+
+    def raise_invalid_handle(command, **kwargs):
+        exc = OSError("[WinError 6] 句柄无效。")
+        exc.winerror = 6
+        raise exc
+
+    monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb._runtime_adb_path", None, raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb.sys", frozen_sys)
+    monkeypatch.setattr("shutil.which", lambda name: str(path_adb) if name == "adb" else None)
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", raise_invalid_handle)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        run_adb(["version"])
+
+    message = str(exc_info.value)
+    assert "无法启动 adb：[WinError 6] 句柄无效。" in message
+    assert str(embedded_adb) in message
+    assert str(path_adb) in message
+    assert "logcat-tool-for-win-legacy-win7.zip" in message
+    assert "LOGCAT_TOOL_ADB" in message
+
+
 def test_build_logcat_command_uses_resolved_adb_path_and_filter_spec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

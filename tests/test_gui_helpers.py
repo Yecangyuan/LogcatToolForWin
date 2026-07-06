@@ -2420,6 +2420,58 @@ def test_enable_wireless_adb_retries_ip_discovery_after_enabling_tcpip(monkeypat
     assert controller.status.last_error == "connected to 192.168.1.111:5555"
 
 
+def test_enable_wireless_adb_uses_entered_target_when_ip_discovery_stays_unknown(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    target = "192.168.1.111:5555"
+    tcp_device = make_device(target)
+    calls: list[tuple[str, object]] = []
+    controller.status.adb_ready = True
+    controller.connect_var.set(target)
+
+    controller.devices = [selected_device]
+    controller.device_var.set(gui.device_label(selected_device))
+    controller.status.active_device_serial = selected_device.serial
+    controller._current_device = lambda: selected_device
+    controller._run_background_task = (
+        lambda _message, action, on_success, _on_error, task_key=None: on_success(action())
+    )
+    controller._update_status = lambda: calls.append(("status", None))
+
+    def fake_get_device_route_ip(serial: str) -> str:
+        calls.append(("route_ip", serial))
+        return ""
+
+    def fake_enable_tcpip(serial: str, port: int) -> str:
+        calls.append(("tcpip", (serial, port)))
+        return "restarting in TCP mode port: 5555\n"
+
+    def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+        calls.append(("connect", (target, attempts, delay_seconds)))
+        return f"connected to {target}\n"
+
+    monkeypatch.setattr(gui, "get_device_route_ip", fake_get_device_route_ip)
+    monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(gui, "list_devices", lambda: [selected_device, tcp_device])
+
+    gui.LogcatToolGUI.enable_wireless_adb(controller)
+
+    adb_calls = [call for call in calls if call[0] != "status"]
+    assert adb_calls == [
+        ("route_ip", "USB123"),
+        ("tcpip", ("USB123", 5555)),
+        ("route_ip", "USB123"),
+        ("connect", (target, 3, 1.0)),
+    ]
+    assert controller.connect_var.get() == target
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == target
+    assert controller.status.last_error == f"connected to {target}"
+
+
 def test_enable_wireless_adb_warns_when_adb_is_not_ready(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")

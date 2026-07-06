@@ -854,21 +854,28 @@ class LogcatToolGUI:
             messagebox.showwarning("需要 USB 设备", "请先选择通过 USB 连接的设备。")
             return
 
+        raw_target = self.connect_var.get().strip()
         try:
-            port = extract_tcp_port(self.connect_var.get().strip(), DEFAULT_TCP_PORT)
+            port = extract_tcp_port(raw_target, DEFAULT_TCP_PORT)
+            preferred_target = normalize_tcp_target(raw_target) if raw_target else ""
         except Exception as exc:
             messagebox.showwarning("TCP 端口无效", str(exc))
             return
 
         self._run_background_task(
             f"正在为 {device.serial} 开启无线 ADB...",
-            lambda: self._prepare_wireless_adb(device.serial, port),
+            lambda: self._prepare_wireless_adb(device.serial, port, preferred_target),
             self._handle_wireless_adb_success,
             self._handle_wireless_adb_error,
             task_key=DEVICE_SYNC_TASK_KEY,
         )
 
-    def _prepare_wireless_adb(self, serial: str, port: int) -> tuple[str, str, list[DeviceInfo]]:
+    def _prepare_wireless_adb(
+        self,
+        serial: str,
+        port: int,
+        preferred_target: str = "",
+    ) -> tuple[str, str, list[DeviceInfo]]:
         route_ip = self._route_ip_for_serial(serial)
 
         tcpip_message = enable_tcpip(serial, port).strip()
@@ -877,6 +884,10 @@ class LogcatToolGUI:
         target = ""
         if route_ip:
             target = f"{route_ip}:{port}"
+            connect_message = connect_device(target, attempts=3, delay_seconds=1.0).strip()
+            message = connect_message or f"已连接 {target}"
+        elif preferred_target:
+            target = preferred_target
             connect_message = connect_device(target, attempts=3, delay_seconds=1.0).strip()
             message = connect_message or f"已连接 {target}"
         else:

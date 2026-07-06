@@ -800,17 +800,20 @@ class LogcatToolGUI:
         selected_usb_device = self._selected_usb_device_for_tcp_connect()
 
         def action() -> tuple[str, str, list[DeviceInfo]]:
-            message = self._connect_tcp_target_with_usb_fallback(target, selected_usb_device).strip()
-            message = message or f"已连接 {target}"
+            connected_target, message = self._connect_tcp_target_with_usb_fallback(
+                target,
+                selected_usb_device,
+            )
+            message = message.strip() or f"已连接 {connected_target}"
             try:
                 devices = list_devices()
             except Exception as exc:
                 return (
-                    target,
+                    connected_target,
                     f"{message}；设备列表刷新失败：{exc}",
-                    _ensure_tcp_device(existing_devices, target),
+                    _ensure_tcp_device(existing_devices, connected_target),
                 )
-            return target, message, _ensure_tcp_device(devices, target)
+            return connected_target, message, _ensure_tcp_device(devices, connected_target)
 
         self._run_background_task(
             f"正在连接 {target}...",
@@ -823,6 +826,7 @@ class LogcatToolGUI:
     def _handle_connect_tcp_success(self, result: tuple[str, str, list[DeviceInfo]]) -> None:
         target, message, devices = result
         self._remember_connect_target(target)
+        self.connect_var.set(target)
         self._apply_devices(devices)
         self._select_device_by_serial(target)
         self.status.last_error = message or f"已连接 {target}"
@@ -955,18 +959,22 @@ class LogcatToolGUI:
         self,
         target: str,
         selected_usb_device: Optional[DeviceInfo],
-    ) -> str:
+    ) -> tuple[str, str]:
         direct_error: Optional[ADBCommandError] = None
         try:
-            return self._connect_tcp_target(target)
+            return target, self._connect_tcp_target(target)
         except ADBCommandError as exc:
             direct_error = exc
             if selected_usb_device is None:
                 raise
             route_ip = self._route_ip_for_serial(selected_usb_device.serial)
             if route_ip and not self._usb_route_ip_matches_tcp_target(route_ip, target):
-                self._attach_usb_ip_hint_to_tcp_error(exc, target, route_ip)
-                raise
+                return self._connect_tcp_target_with_updated_usb_ip(
+                    target,
+                    route_ip,
+                    selected_usb_device,
+                    direct_error,
+                )
 
         port = extract_tcp_port(target, DEFAULT_TCP_PORT)
         try:
@@ -977,9 +985,35 @@ class LogcatToolGUI:
                 self._format_connect_tcp_retry_error(selected_usb_device, direct_error, exc)
             ) from exc
         retry_message = retry_message or f"已连接 {target}"
+        return target, f"首次直连失败，已自动为 {selected_usb_device.serial} 开启无线 ADB；{retry_message}"
+
+    def _connect_tcp_target_with_updated_usb_ip(
+        self,
+        original_target: str,
+        route_ip: str,
+        selected_usb_device: DeviceInfo,
+        direct_error: Exception,
+    ) -> tuple[str, str]:
+        port = extract_tcp_port(original_target, DEFAULT_TCP_PORT)
+        retry_target = f"{route_ip}:{port}"
+        try:
+            enable_tcpip(selected_usb_device.serial, port)
+            retry_message = self._connect_tcp_target(retry_target).strip()
+        except Exception as exc:
+            raise ADBCommandError(
+                self._format_connect_tcp_retarget_retry_error(
+                    selected_usb_device,
+                    original_target,
+                    retry_target,
+                    direct_error,
+                    exc,
+                )
+            ) from exc
+        retry_message = retry_message or f"已连接 {retry_target}"
         return (
-            f"首次直连失败，已自动为 {selected_usb_device.serial} 开启无线 ADB；"
-            f"{retry_message}"
+            retry_target,
+            f"首次直连 {original_target} 失败，检测到 {selected_usb_device.serial} 当前 IP 已变为 "
+            f"{route_ip}，已自动改连 {retry_target}；{retry_message}",
         )
 
     def _route_ip_for_serial(self, serial: str) -> str:
@@ -1017,6 +1051,22 @@ class LogcatToolGUI:
             f"{direct_message}\n\n"
             f"已尝试为当前 USB 设备 {selected_usb_device.serial} 自动开启无线 ADB 后再连接，"
             f"但仍失败：{retry_message}"
+        )
+
+    def _format_connect_tcp_retarget_retry_error(
+        self,
+        selected_usb_device: DeviceInfo,
+        original_target: str,
+        retry_target: str,
+        direct_error: Exception,
+        retry_error: Exception,
+    ) -> str:
+        direct_message = str(direct_error).strip() or "直连失败。"
+        retry_message = str(retry_error).strip() or "改连当前设备 IP 后仍失败。"
+        return (
+            f"{direct_message}\n\n"
+            f"已检测到当前 USB 设备 {selected_usb_device.serial} 的 IP 不再是 {original_target}，"
+            f"程序已自动改连 {retry_target}，但仍失败：{retry_message}"
         )
 
     def _format_connect_tcp_error_message(self, exc: Exception) -> str:

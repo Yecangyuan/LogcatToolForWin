@@ -107,6 +107,94 @@ def test_resolve_adb_path_falls_back_to_path_adb_when_source_resource_is_missing
     assert resolve_adb_path() == path_adb
 
 
+def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_keeps_failing_invalid_handle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_windows_startupinfo,
+) -> None:
+    embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
+    embedded_adb.parent.mkdir(parents=True)
+    embedded_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    path_adb.parent.mkdir(parents=True)
+    path_adb.write_text("adb", encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    frozen_sys = SimpleNamespace(
+        executable=str(tmp_path / "logcat-tool-for-win.exe"),
+        frozen=True,
+        _MEIPASS=str(tmp_path / "_MEI12345"),
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[0] == str(embedded_adb):
+            exc = OSError("[WinError 6] 句柄无效。")
+            exc.winerror = 6
+            raise exc
+        return completed
+
+    monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb._runtime_adb_path", None, raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb.sys", frozen_sys)
+    monkeypatch.setattr("shutil.which", lambda name: str(path_adb) if name == "adb" else None)
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    result = run_adb(["connect", "192.168.0.8:5555"])
+
+    assert result is completed
+    assert commands[0][0] == str(embedded_adb)
+    assert commands[-1][0] == str(path_adb)
+    assert str(path_adb) in [command[0] for command in commands]
+
+
+def test_build_logcat_command_uses_runtime_fallback_adb_after_invalid_handle_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_windows_startupinfo,
+) -> None:
+    embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
+    embedded_adb.parent.mkdir(parents=True)
+    embedded_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    path_adb.parent.mkdir(parents=True)
+    path_adb.write_text("adb", encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        args=["adb", "devices", "-l"],
+        returncode=0,
+        stdout="List of devices attached\n\n",
+        stderr="",
+    )
+    frozen_sys = SimpleNamespace(
+        executable=str(tmp_path / "logcat-tool-for-win.exe"),
+        frozen=True,
+        _MEIPASS=str(tmp_path / "_MEI12345"),
+    )
+
+    def fake_run(command, **kwargs):
+        if command[0] == str(embedded_adb):
+            exc = OSError("[WinError 6] 句柄无效。")
+            exc.winerror = 6
+            raise exc
+        return completed
+
+    monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb._runtime_adb_path", None, raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb.sys", frozen_sys)
+    monkeypatch.setattr("shutil.which", lambda name: str(path_adb) if name == "adb" else None)
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    run_adb(["devices", "-l"])
+    command = build_logcat_command("SERIAL", FilterState())
+
+    assert command[0] == str(path_adb)
+
+
 def test_build_logcat_command_uses_resolved_adb_path_and_filter_spec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -522,7 +610,7 @@ def test_run_adb_raises_adb_command_error_on_non_zero_exit(
         stdout="",
         stderr="failed",
     )
-    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.iter_adb_paths", lambda: iter([Path("/adb.exe")]))
     monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", lambda *args, **kwargs: completed)
 
     with pytest.raises(ADBCommandError, match="failed"):
@@ -538,7 +626,7 @@ def test_run_adb_includes_stdout_error_when_stderr_has_daemon_banner(
         stdout="failed to connect to 192.168.0.8:5555: Connection refused\n",
         stderr="* daemon not running; starting now at tcp:5037\n* daemon started successfully\n",
     )
-    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.iter_adb_paths", lambda: iter([Path("/adb.exe")]))
     monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", lambda *args, **kwargs: completed)
 
     with pytest.raises(ADBCommandError, match="failed to connect"):
@@ -548,7 +636,7 @@ def test_run_adb_includes_stdout_error_when_stderr_has_daemon_banner(
 def test_run_adb_reports_missing_adb_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/missing/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.iter_adb_paths", lambda: iter([Path("/missing/adb.exe")]))
 
     def raise_missing(*args, **kwargs):
         raise FileNotFoundError("missing")
@@ -562,7 +650,7 @@ def test_run_adb_reports_missing_adb_path(
 def test_run_adb_reports_permission_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.iter_adb_paths", lambda: iter([Path("/adb.exe")]))
 
     def raise_permission(*args, **kwargs):
         raise PermissionError("denied")
@@ -576,7 +664,7 @@ def test_run_adb_reports_permission_failures(
 def test_run_adb_reports_timeout_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("logcat_tool_for_win.adb.resolve_adb_path", lambda: Path("/adb.exe"))
+    monkeypatch.setattr("logcat_tool_for_win.adb.iter_adb_paths", lambda: iter([Path("/adb.exe")]))
 
     def raise_timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired(cmd=["adb", "devices"], timeout=2.0)

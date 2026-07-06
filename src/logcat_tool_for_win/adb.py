@@ -15,6 +15,7 @@ from logcat_tool_for_win.filters import build_logcat_filter_spec
 from logcat_tool_for_win.models import DeviceInfo, FilterState
 
 DEFAULT_TCP_PORT = 5555
+_runtime_adb_path: Optional[Path] = None
 ADB_LAUNCH_OPTIONS = (
     (None, True),
     (True, True),
@@ -117,7 +118,29 @@ def _is_invalid_windows_handle(exc: OSError) -> bool:
     )
 
 
-def resolve_adb_path() -> Path:
+def _iter_unique_paths(paths: Iterator[Optional[Path]]) -> Iterator[Path]:
+    seen: set[str] = set()
+    for path in paths:
+        if path is None:
+            continue
+        key = str(path).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        yield path
+
+
+def _preferred_runtime_adb_path() -> Optional[Path]:
+    global _runtime_adb_path
+    if _runtime_adb_path is None:
+        return None
+    if _runtime_adb_path.exists():
+        return _runtime_adb_path
+    _runtime_adb_path = None
+    return None
+
+
+def _default_adb_path() -> Path:
     override = os.environ.get("LOGCAT_TOOL_ADB")
     if override:
         return Path(override)
@@ -142,6 +165,64 @@ def resolve_adb_path() -> Path:
     if path_adb:
         return Path(path_adb)
     return source_adb
+
+
+def iter_adb_paths() -> Iterator[Path]:
+    override = os.environ.get("LOGCAT_TOOL_ADB")
+    if override:
+        yield Path(override)
+        return
+
+    runtime_adb = _preferred_runtime_adb_path()
+    if getattr(sys, "frozen", False):
+        bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+        bundled_adb = bundle_root / "platform-tools" / "adb.exe"
+        packaged_adb = Path(sys.executable).resolve().parent / "platform-tools" / "adb.exe"
+        path_adb = shutil.which("adb")
+        yielded = False
+        for candidate in _iter_unique_paths(
+            iter(
+                (
+                    runtime_adb,
+                    bundled_adb if bundled_adb.exists() else None,
+                    packaged_adb if packaged_adb.exists() else None,
+                    Path(path_adb) if path_adb else None,
+                )
+            )
+        ):
+            yielded = True
+            yield candidate
+        if not yielded:
+            yield packaged_adb
+        return
+
+    source_adb = Path(__file__).resolve().parent / "resources" / "platform-tools" / "adb.exe"
+    path_adb = shutil.which("adb")
+    yielded = False
+    for candidate in _iter_unique_paths(
+        iter(
+            (
+                runtime_adb,
+                source_adb if source_adb.exists() else None,
+                Path(path_adb) if path_adb else None,
+            )
+        )
+    ):
+        yielded = True
+        yield candidate
+    if not yielded:
+        yield source_adb
+
+
+def resolve_adb_path() -> Path:
+    return next(iter_adb_paths(), _default_adb_path())
+
+
+def _remember_runtime_adb_path(adb_path: Path) -> None:
+    if os.environ.get("LOGCAT_TOOL_ADB"):
+        return
+    global _runtime_adb_path
+    _runtime_adb_path = adb_path
 
 
 def validate_tcp_target(target: str) -> str:
@@ -270,36 +351,41 @@ def _extract_first_non_loopback_ipv4(output: str) -> str:
 
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
     _suppress_windows_error_dialogs()
-    adb_path = resolve_adb_path()
-    command = [str(adb_path), *args]
-
     launch_kwargs = list(iter_adb_process_kwargs(timeout=timeout))
     if _is_windows():
         launch_kwargs.extend(iter_adb_process_kwargs(timeout=timeout, merge_stderr=True))
-    for attempt_index, process_kwargs in enumerate(launch_kwargs):
-        try:
-            result = subprocess.run(
-                command,
-                **process_kwargs,
-            )
-            break
-        except subprocess.TimeoutExpired as exc:
-            raise ADBCommandError(f"ADB 命令超时（{timeout:g} 秒）：{' '.join(args)}") from exc
-        except FileNotFoundError as exc:
-            raise ADBCommandError(f"未找到 adb：{adb_path}") from exc
-        except PermissionError as exc:
-            raise ADBCommandError(f"无法执行 adb，请检查权限：{adb_path}") from exc
-        except OSError as exc:
-            if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
-                continue
-            raise ADBCommandError(f"无法启动 adb：{exc}") from exc
-    if result.returncode != 0:
-        stdout_text = (result.stdout or "").strip()
-        stderr_text = (result.stderr or "").strip()
-        message_parts = [part for part in (stderr_text, stdout_text) if part]
-        message = "\n".join(message_parts) or f"adb 退出，代码：{result.returncode}"
-        raise ADBCommandError(message)
-    return result
+    adb_paths = list(iter_adb_paths())
+    for path_index, adb_path in enumerate(adb_paths):
+        command = [str(adb_path), *args]
+        for attempt_index, process_kwargs in enumerate(launch_kwargs):
+            try:
+                result = subprocess.run(
+                    command,
+                    **process_kwargs,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise ADBCommandError(f"ADB 命令超时（{timeout:g} 秒）：{' '.join(args)}") from exc
+            except FileNotFoundError as exc:
+                if path_index + 1 < len(adb_paths):
+                    break
+                raise ADBCommandError(f"未找到 adb：{adb_path}") from exc
+            except PermissionError as exc:
+                raise ADBCommandError(f"无法执行 adb，请检查权限：{adb_path}") from exc
+            except OSError as exc:
+                if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
+                    continue
+                if _is_invalid_windows_handle(exc) and path_index + 1 < len(adb_paths):
+                    break
+                raise ADBCommandError(f"无法启动 adb：{exc}") from exc
+            _remember_runtime_adb_path(adb_path)
+            if result.returncode != 0:
+                stdout_text = (result.stdout or "").strip()
+                stderr_text = (result.stderr or "").strip()
+                message_parts = [part for part in (stderr_text, stdout_text) if part]
+                message = "\n".join(message_parts) or f"adb 退出，代码：{result.returncode}"
+                raise ADBCommandError(message)
+            return result
+    raise ADBCommandError(f"未找到可用 adb：{_default_adb_path()}")
 
 
 def list_devices() -> list[DeviceInfo]:

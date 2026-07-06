@@ -1310,8 +1310,9 @@ class LogcatToolGUI:
             elif event.kind == "stderr":
                 if self.manual_stop or self.status.stream_state not in {"streaming", "reconnecting"}:
                     continue
-                self.status.last_error = event.message
-                status_dirty = True
+                if self.status.last_error != event.message:
+                    self.status.last_error = event.message
+                    status_dirty = True
             elif event.kind == "stopped":
                 self.session = None
                 if self.status.stream_state == "streaming":

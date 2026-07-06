@@ -454,6 +454,22 @@ def test_poll_stream_skips_redundant_status_update_for_line_only_batch() -> None
     assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
 
 
+def test_poll_stream_skips_redundant_status_update_for_repeated_stderr_message() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    controller.status.last_error = "device offline"
+    controller.events.put(StreamEvent(kind="stderr", message="device offline"))
+    status_updates: list[str] = []
+    controller._update_status = lambda: status_updates.append("status")
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert status_updates == []
+    assert controller.status.last_error == "device offline"
+    assert controller.status.queue_depth == 0
+
+
 def test_append_visible_entries_configures_each_highlight_tag_once() -> None:
     controller = make_controller()
     controller.highlight_rules = [

@@ -1748,6 +1748,21 @@ def test_retry_stream_preserves_refresh_failure_reason() -> None:
     assert "adb unavailable" in controller.status.last_error
 
 
+def test_retry_stream_fails_when_reconnect_target_is_missing() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "reconnecting"
+    controller.status.reconnect_attempt = 1
+    controller.status.active_device_serial = ""
+    controller.reconnect_target_serial = ""
+
+    gui.LogcatToolGUI._retry_stream(controller)
+
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == "重连设备不可用：缺少重连目标。"
+
+
 def test_retry_stream_does_not_restart_from_stale_devices_after_refresh_failure() -> None:
     controller = make_controller()
     stale_target = make_device("target-serial")

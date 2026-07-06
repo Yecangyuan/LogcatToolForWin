@@ -998,6 +998,9 @@ class LogcatToolGUI:
         self._update_status()
 
     def _handle_wireless_adb_error(self, exc: Exception) -> None:
+        raw_message = str(exc).strip() or "开启无线 ADB 失败。"
+        if self._show_adb_launch_recovery_prompt(raw_message):
+            return
         message = self._format_wireless_adb_error_message(exc)
         messagebox.showerror(WIRELESS_ADB_ERROR_TITLE, message)
         self.status.last_error = message
@@ -1341,8 +1344,10 @@ class LogcatToolGUI:
             self.status.stream_state = "failed"
             self.status.reconnect_attempt = 0
             self.reconnect_target_serial = ""
-            self.status.last_error = str(exc)
-            messagebox.showerror("启动失败", str(exc))
+            message = str(exc)
+            if not self._show_adb_launch_recovery_prompt(message):
+                self.status.last_error = message
+                messagebox.showerror("启动失败", message)
         self._update_status()
 
     def stop_stream(self) -> None:
@@ -1417,9 +1422,14 @@ class LogcatToolGUI:
         self._update_status()
 
     def _handle_restart_adb_error(self, exc: Exception) -> None:
-        messagebox.showerror("ADB 重启失败", str(exc))
+        message = str(exc)
+        if self._is_adb_launch_failure_message(message):
+            self._handle_refresh_devices_error(exc)
+            self._show_adb_launch_recovery_prompt(message)
+            return
+        messagebox.showerror("ADB 重启失败", message)
         self._handle_refresh_devices_error(exc)
-        self.status.last_error = str(exc)
+        self.status.last_error = message
         self._update_status()
 
     def configure_adb_path(self) -> None:

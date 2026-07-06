@@ -2059,6 +2059,62 @@ def test_handle_connect_tcp_error_offers_to_switch_adb_path_for_launch_failures(
     assert controller.status.last_error == prompts[0][1]
 
 
+def test_start_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.status.adb_ready = True
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: None
+    controller._update_status = lambda: None
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    class FailingSession:
+        def __init__(self, command: list[str], events: queue.Queue[StreamEvent]) -> None:
+            pass
+
+        def start(self) -> None:
+            raise RuntimeError("无法启动 adb：[WinError 6] 句柄无效。")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "build_logcat_command",
+        lambda serial, filter_state: ["adb", "-s", serial, "logcat"],
+    )
+    monkeypatch.setattr(gui, "LogcatSession", FailingSession)
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_connect_tcp_reports_retarget_failure_when_usb_device_ip_connect_still_fails(
     monkeypatch,
 ) -> None:
@@ -2592,6 +2648,55 @@ def test_handle_restart_adb_error_marks_adb_unavailable(monkeypatch) -> None:
 def test_build_highlight_text_tag_avoids_builtin_tag_collisions() -> None:
     assert gui.build_highlight_text_tag("E") != "E"
     assert gui.build_highlight_text_tag("filtered-out") != "filtered-out"
+
+
+def test_handle_restart_adb_error_offers_to_switch_adb_path_for_launch_failures(monkeypatch) -> None:
+    controller = make_controller()
+    stale_device = make_device("192.168.1.111:5555", state="offline")
+    stale_label = gui.device_label(stale_device)
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_restart_adb_error(
+        controller,
+        RuntimeError("adb.exe 启动后崩溃退出（0xC0000005）"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "adb.exe 启动后崩溃退出（0xC0000005）\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.last_error == prompts[0][1]
 
 
 def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
@@ -3244,3 +3349,43 @@ def test_handle_wireless_adb_error_explains_usb_checks(monkeypatch) -> None:
         )
     ]
     assert controller.status.last_error == errors[0][1]
+
+
+def test_handle_wireless_adb_error_offers_to_switch_adb_path_for_launch_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_wireless_adb_error(
+        controller,
+        RuntimeError("无法启动 adb：[WinError 6] 句柄无效。"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.last_error == prompts[0][1]

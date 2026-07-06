@@ -976,13 +976,14 @@ class LogcatToolGUI:
             return
 
         self.refresh_devices()
-        for device in self.devices:
-            if device.serial == target_serial and device.state == "device":
-                self.device_var.set(device_label(device))
-                self.start_stream()
-                return
-
         refresh_error = self.status.last_error.strip()
+        if self.status.adb_ready:
+            for device in self.devices:
+                if device.serial == target_serial and device.state == "device":
+                    self.device_var.set(device_label(device))
+                    self.start_stream()
+                    return
+
         self.status.stream_state = "failed"
         if refresh_error:
             self.status.last_error = f"重连设备不可用：{refresh_error}"

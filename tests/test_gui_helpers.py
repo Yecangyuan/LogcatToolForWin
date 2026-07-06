@@ -1327,6 +1327,7 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh() -> None:
     def fake_refresh_devices() -> None:
         controller.devices = [other_device, target_device]
         controller.device_var.set(gui.device_label(other_device))
+        controller.status.adb_ready = True
         controller.status.active_device_serial = other_device.serial
 
     controller.refresh_devices = fake_refresh_devices
@@ -1353,6 +1354,30 @@ def test_retry_stream_preserves_refresh_failure_reason() -> None:
 
     gui.LogcatToolGUI._retry_stream(controller)
 
+    assert controller.status.stream_state == "failed"
+    assert "重连设备不可用" in controller.status.last_error
+    assert "adb unavailable" in controller.status.last_error
+
+
+def test_retry_stream_does_not_restart_from_stale_devices_after_refresh_failure() -> None:
+    controller = make_controller()
+    stale_target = make_device("target-serial")
+    controller.devices = [stale_target]
+    controller.reconnect_target_serial = stale_target.serial
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = stale_target.serial
+    started: list[str] = []
+
+    def fake_refresh_devices() -> None:
+        controller.status.adb_ready = False
+        controller.status.last_error = "adb unavailable"
+
+    controller.refresh_devices = fake_refresh_devices
+    controller.start_stream = lambda: started.append("started")
+
+    gui.LogcatToolGUI._retry_stream(controller)
+
+    assert started == []
     assert controller.status.stream_state == "failed"
     assert "重连设备不可用" in controller.status.last_error
     assert "adb unavailable" in controller.status.last_error

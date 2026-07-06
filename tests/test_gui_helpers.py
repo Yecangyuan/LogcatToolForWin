@@ -1751,14 +1751,16 @@ def test_save_session_state_persists_recent_target_history(monkeypatch) -> None:
     controller._update_status = lambda: None
     captured: dict[str, object] = {}
 
-    def fake_save_state(path, filters, rules, recent_target, recent_targets) -> None:
+    def fake_save_state(path, filters, rules, recent_target, recent_targets, manual_adb_path) -> None:
         captured["path"] = path
         captured["filters"] = filters
         captured["rules"] = rules
         captured["recent_target"] = recent_target
         captured["recent_targets"] = recent_targets
+        captured["manual_adb_path"] = manual_adb_path
 
     monkeypatch.setattr(gui, "save_state", fake_save_state)
+    monkeypatch.setattr(gui, "get_manual_adb_path", lambda: Path("C:/Android/platform-tools/adb.exe"))
     monkeypatch.setattr(gui, "messagebox", SimpleNamespace(showwarning=lambda *args: None, showerror=lambda *args: None))
 
     gui.LogcatToolGUI.save_session_state(controller)
@@ -1769,6 +1771,7 @@ def test_save_session_state_persists_recent_target_history(monkeypatch) -> None:
         "192.168.1.111:5555",
         "192.168.1.112:5555",
     ]
+    assert captured["manual_adb_path"] == "C:/Android/platform-tools/adb.exe"
     assert controller.connect_combo.values == (
         "192.168.1.111:5555",
         "192.168.1.112:5555",
@@ -1787,18 +1790,43 @@ def test_save_session_state_skips_invalid_recent_target_history(monkeypatch) -> 
     controller._update_status = lambda: None
     captured: dict[str, object] = {}
 
-    def fake_save_state(path, filters, rules, recent_target, recent_targets) -> None:
+    def fake_save_state(path, filters, rules, recent_target, recent_targets, manual_adb_path) -> None:
         captured["recent_target"] = recent_target
         captured["recent_targets"] = recent_targets
+        captured["manual_adb_path"] = manual_adb_path
 
     monkeypatch.setattr(gui, "save_state", fake_save_state)
+    monkeypatch.setattr(gui, "get_manual_adb_path", lambda: None)
     monkeypatch.setattr(gui, "messagebox", SimpleNamespace(showwarning=lambda *args: None, showerror=lambda *args: None))
 
     gui.LogcatToolGUI.save_session_state(controller)
 
     assert captured["recent_target"] == "not-a-target"
     assert captured["recent_targets"] == ["192.168.1.112:5555"]
+    assert captured["manual_adb_path"] == ""
     assert controller.connect_combo.values == ("192.168.1.112:5555",)
+
+
+def test_restore_saved_manual_adb_path_applies_non_empty_path(monkeypatch) -> None:
+    controller = make_controller()
+    captured: list[Path] = []
+
+    monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: captured.append(path))
+
+    gui.LogcatToolGUI._restore_saved_manual_adb_path(controller, "C:/Android/platform-tools/adb.exe")
+
+    assert captured == [Path("C:/Android/platform-tools/adb.exe")]
+
+
+def test_restore_saved_manual_adb_path_clears_empty_value(monkeypatch) -> None:
+    controller = make_controller()
+    captured: list[object] = []
+
+    monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: captured.append(path))
+
+    gui.LogcatToolGUI._restore_saved_manual_adb_path(controller, "")
+
+    assert captured == [None]
 
 
 def test_select_device_by_serial_preserves_active_stream_target() -> None:

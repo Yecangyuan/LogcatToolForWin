@@ -104,6 +104,12 @@ def _merge_recent_targets(recent_target: str, recent_targets: object) -> list[st
     return merged
 
 
+def _coerce_manual_adb_path(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
 def _named_preset_to_payload(preset: NamedPreset) -> dict[str, object]:
     return {
         "filters": _filters_to_payload(preset.filters),
@@ -208,6 +214,7 @@ def save_state(
     rules: list[HighlightRule],
     recent_target: str,
     recent_targets: object = (),
+    manual_adb_path: str = "",
 ) -> None:
     merged_recent_targets = _merge_recent_targets(recent_target, recent_targets)
     payload = {
@@ -224,19 +231,20 @@ def save_state(
         ],
         "recent_target": merged_recent_targets[0] if merged_recent_targets else "",
         "recent_targets": merged_recent_targets,
+        "manual_adb_path": _coerce_manual_adb_path(manual_adb_path),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def load_state(path: Path) -> tuple[FilterState, list[HighlightRule], str, list[str]]:
+def load_state(path: Path) -> tuple[FilterState, list[HighlightRule], str, list[str], str]:
     if not path.exists():
-        return FilterState(), [], "", []
+        return FilterState(), [], "", [], ""
 
     try:
         payload = _read_json_object(path)
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return FilterState(), [], "", []
+        return FilterState(), [], "", [], ""
 
     filters = _filters_from_payload(payload.get("filters", {}))
     rules = _highlight_rules_from_payload(payload.get("highlight_rules", []))
@@ -245,4 +253,5 @@ def load_state(path: Path) -> tuple[FilterState, list[HighlightRule], str, list[
         payload.get("recent_targets", []),
     )
     recent_target = recent_targets[0] if recent_targets else ""
-    return filters, rules, recent_target, recent_targets
+    manual_adb_path = _coerce_manual_adb_path(payload.get("manual_adb_path", ""))
+    return filters, rules, recent_target, recent_targets, manual_adb_path

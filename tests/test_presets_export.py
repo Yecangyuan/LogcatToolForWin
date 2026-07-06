@@ -24,14 +24,18 @@ def test_save_and_load_state_round_trip(tmp_path: Path) -> None:
         rules,
         "10.0.0.5:5555",
         ["10.0.0.5:5555", "10.0.0.8:5555"],
+        "C:/Android/platform-tools/adb.exe",
     )
-    loaded_filters, loaded_rules, recent_target, recent_targets = load_state(state_file)
+    loaded_filters, loaded_rules, recent_target, recent_targets, manual_adb_path = load_state(
+        state_file
+    )
 
     assert loaded_filters.minimum_level == "W"
     assert loaded_filters.tag_filters == ("MyApp",)
     assert loaded_rules[0].name == "Crash"
     assert recent_target == "10.0.0.5:5555"
     assert recent_targets == ["10.0.0.5:5555", "10.0.0.8:5555"]
+    assert manual_adb_path == "C:/Android/platform-tools/adb.exe"
 
 
 def test_save_and_load_named_presets_round_trip(tmp_path: Path) -> None:
@@ -119,12 +123,15 @@ def test_load_state_returns_defaults_for_bad_payload(tmp_path: Path) -> None:
     state_file = tmp_path / "state.json"
     state_file.write_text("{not-json", encoding="utf-8")
 
-    loaded_filters, loaded_rules, recent_target, recent_targets = load_state(state_file)
+    loaded_filters, loaded_rules, recent_target, recent_targets, manual_adb_path = load_state(
+        state_file
+    )
 
     assert loaded_filters == FilterState()
     assert loaded_rules == []
     assert recent_target == ""
     assert recent_targets == []
+    assert manual_adb_path == ""
 
 
 def test_load_state_skips_invalid_highlight_rules(tmp_path: Path) -> None:
@@ -144,13 +151,16 @@ def test_load_state_skips_invalid_highlight_rules(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    loaded_filters, loaded_rules, recent_target, recent_targets = load_state(state_file)
+    loaded_filters, loaded_rules, recent_target, recent_targets, manual_adb_path = load_state(
+        state_file
+    )
 
     assert loaded_filters.minimum_level == "I"
     assert loaded_filters.match_only is False
     assert [rule.name for rule in loaded_rules] == ["Good"]
     assert recent_target == ""
     assert recent_targets == []
+    assert manual_adb_path == ""
 
 
 def test_load_state_normalizes_loaded_filter_values(tmp_path: Path) -> None:
@@ -169,12 +179,15 @@ def test_load_state_normalizes_loaded_filter_values(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    loaded_filters, _loaded_rules, recent_target, recent_targets = load_state(state_file)
+    loaded_filters, _loaded_rules, recent_target, recent_targets, manual_adb_path = load_state(
+        state_file
+    )
 
     assert loaded_filters.minimum_level == "V"
     assert loaded_filters.tag_filters == ("ActivityManager", "MyApp")
     assert recent_target == "192.168.1.111:5555"
     assert recent_targets == ["192.168.1.111:5555"]
+    assert manual_adb_path == ""
 
 
 def test_load_state_normalizes_recent_target_history(tmp_path: Path) -> None:
@@ -198,7 +211,9 @@ def test_load_state_normalizes_recent_target_history(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    _loaded_filters, _loaded_rules, recent_target, recent_targets = load_state(state_file)
+    _loaded_filters, _loaded_rules, recent_target, recent_targets, manual_adb_path = load_state(
+        state_file
+    )
 
     assert recent_target == "192.168.1.111:5555"
     assert recent_targets == [
@@ -206,6 +221,7 @@ def test_load_state_normalizes_recent_target_history(tmp_path: Path) -> None:
         "192.168.1.112:5555",
         "192.168.1.113:5555",
     ]
+    assert manual_adb_path == ""
 
 
 def test_load_state_skips_invalid_recent_targets_and_normalizes_ports(tmp_path: Path) -> None:
@@ -227,13 +243,38 @@ def test_load_state_skips_invalid_recent_targets_and_normalizes_ports(tmp_path: 
         encoding="utf-8",
     )
 
-    _loaded_filters, _loaded_rules, recent_target, recent_targets = load_state(state_file)
+    _loaded_filters, _loaded_rules, recent_target, recent_targets, manual_adb_path = load_state(
+        state_file
+    )
 
     assert recent_target == "192.168.1.111:5555"
     assert recent_targets == [
         "192.168.1.111:5555",
         "192.168.1.112:5555",
     ]
+    assert manual_adb_path == ""
+
+
+def test_load_state_normalizes_manual_adb_path_string(tmp_path: Path) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "filters": {},
+                "highlight_rules": [],
+                "recent_target": "",
+                "recent_targets": [],
+                "manual_adb_path": " C:/Android/platform-tools/adb.exe ",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _filters, _rules, recent_target, recent_targets, manual_adb_path = load_state(state_file)
+
+    assert recent_target == ""
+    assert recent_targets == []
+    assert manual_adb_path == "C:/Android/platform-tools/adb.exe"
 
 
 def test_export_lines_writes_text_file_and_creates_parent_directories(tmp_path: Path) -> None:

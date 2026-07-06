@@ -162,9 +162,16 @@ class LogcatToolGUI:
         self.session: Optional[LogcatSession] = None
         self.raw_lines: deque[LogEntry] = deque(maxlen=RAW_LOG_CAP)
         self.visible_lines: deque[LogEntry] = deque(maxlen=VISIBLE_LOG_CAP)
-        self.filters, self.highlight_rules, recent_target, recent_targets = load_state(
+        (
+            self.filters,
+            self.highlight_rules,
+            recent_target,
+            recent_targets,
+            manual_adb_path,
+        ) = load_state(
             self.state_file
         )
+        self._restore_saved_manual_adb_path(manual_adb_path)
         self.named_presets = load_presets(self.presets_file)
         self.status = AppStatus()
         self.status.adb_path = str(resolve_adb_path())
@@ -676,6 +683,10 @@ class LogcatToolGUI:
             product="",
             raw_descriptor=f"{serial}\toffline",
         )
+
+    def _restore_saved_manual_adb_path(self, manual_adb_path: str) -> None:
+        stripped_path = manual_adb_path.strip()
+        set_manual_adb_path(Path(stripped_path) if stripped_path else None)
 
     def _preserve_stream_target_device(
         self,
@@ -1271,6 +1282,7 @@ class LogcatToolGUI:
                 self.highlight_rules,
                 recent_target,
                 self.recent_targets,
+                str(get_manual_adb_path() or ""),
             )
             self.status.last_error = "会话状态已保存。"
         except Exception as exc:

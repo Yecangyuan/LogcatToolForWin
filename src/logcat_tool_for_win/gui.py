@@ -799,6 +799,10 @@ class LogcatToolGUI:
                     task_key=DEVICE_SYNC_TASK_KEY,
                 )
                 return
+            wireless_warning = self._wireless_prepare_warning_for_selected_device()
+            if wireless_warning is not None:
+                messagebox.showwarning(*wireless_warning)
+                return
             messagebox.showwarning("需要目标地址", "请输入 IP 或 IP:端口 格式的 TCP 目标。")
             return
         if raw_target.isdigit() and selected_usb_device is not None:
@@ -1005,6 +1009,17 @@ class LogcatToolGUI:
         if device.transport != "usb" or device.state != "device":
             return None
         return device
+
+    def _wireless_prepare_warning_for_selected_device(self) -> Optional[tuple[str, str]]:
+        try:
+            device = self._current_device()
+        except ValueError:
+            return None
+        if device.transport != "usb":
+            return "需要 USB 设备", "请先选择通过 USB 连接的设备。"
+        if device.state != "device":
+            return "设备未就绪", f"当前设备状态为 {device.state}，请先选择已就绪的 USB 设备。"
+        return None
 
     def _connect_tcp_target(self, target: str) -> str:
         return connect_device(target, attempts=3, delay_seconds=1.0)

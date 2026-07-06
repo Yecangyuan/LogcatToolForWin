@@ -1592,6 +1592,58 @@ def test_connect_tcp_ignores_invalid_host_without_port_for_selected_usb_device(
     assert controller.status.last_error == "connected to 192.168.1.111:5555"
 
 
+def test_connect_tcp_empty_target_warns_when_selected_usb_device_is_not_ready(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123", state="offline")
+    warnings: list[tuple[str, str]] = []
+    background_calls: list[str] = []
+
+    controller.devices = [selected_device]
+    controller.device_var.set(gui.device_label(selected_device))
+    controller.status.active_device_serial = selected_device.serial
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+
+    assert warnings == [("设备未就绪", "当前设备状态为 offline，请先选择已就绪的 USB 设备。")]
+    assert background_calls == []
+
+
+def test_connect_tcp_empty_target_warns_when_selected_device_is_not_usb(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("192.168.1.111:5555")
+    warnings: list[tuple[str, str]] = []
+    background_calls: list[str] = []
+
+    controller.devices = [selected_device]
+    controller.device_var.set(gui.device_label(selected_device))
+    controller.status.active_device_serial = selected_device.serial
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+
+    assert warnings == [("需要 USB 设备", "请先选择通过 USB 连接的设备。")]
+    assert background_calls == []
+
+
 def test_connect_tcp_retries_direct_tcp_connection(monkeypatch) -> None:
     controller = make_controller()
     device = make_device("192.168.1.111:5555")

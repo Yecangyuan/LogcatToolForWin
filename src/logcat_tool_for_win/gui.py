@@ -502,14 +502,18 @@ class LogcatToolGUI:
             self.text.see(tk.END)
 
     def _schedule_filter_refresh(self) -> None:
+        pending_callback_id = getattr(self, "_pending_filter_refresh_id", None)
+        if pending_callback_id is not None:
+            self._cancel_ui_callback(pending_callback_id)
         version = getattr(self, "_filter_refresh_version", 0) + 1
         self._filter_refresh_version = version
-        self._schedule_ui_callback(
+        self._pending_filter_refresh_id = self._schedule_ui_callback_handle(
             FILTER_REFRESH_DELAY_MS,
             lambda expected_version=version: self._run_scheduled_filter_refresh(expected_version),
         )
 
     def _run_scheduled_filter_refresh(self, expected_version: int) -> None:
+        self._pending_filter_refresh_id = None
         if self._filter_refresh_suspended:
             return
         if getattr(self, "_filter_refresh_version", 0) != expected_version:
@@ -518,6 +522,7 @@ class LogcatToolGUI:
 
     def _invalidate_pending_filter_refreshes(self) -> None:
         self._filter_refresh_version = getattr(self, "_filter_refresh_version", 0) + 1
+        self._pending_filter_refresh_id = None
 
     def _run_background_task(
         self,
@@ -600,15 +605,30 @@ class LogcatToolGUI:
             return
         on_error(exc)
 
-    def _schedule_ui_callback(self, delay: int, callback: Callable[[], None]) -> bool:
+    def _schedule_ui_callback_handle(self, delay: int, callback: Callable[[], None]) -> Optional[object]:
         try:
-            self.root.after(delay, callback)
+            return self.root.after(delay, callback)
+        except Exception as exc:
+            message = str(exc).lower()
+            if "destroyed" in message or "can't invoke" in message or "invalid command" in message:
+                return None
+            raise
+
+    def _cancel_ui_callback(self, callback_id: object) -> bool:
+        after_cancel = getattr(self.root, "after_cancel", None)
+        if after_cancel is None:
+            return False
+        try:
+            after_cancel(callback_id)
         except Exception as exc:
             message = str(exc).lower()
             if "destroyed" in message or "can't invoke" in message or "invalid command" in message:
                 return False
             raise
         return True
+
+    def _schedule_ui_callback(self, delay: int, callback: Callable[[], None]) -> bool:
+        return self._schedule_ui_callback_handle(delay, callback) is not None
 
     def _refresh_preset_choices(self) -> None:
         names = sorted(self.named_presets)

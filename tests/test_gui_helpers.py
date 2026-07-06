@@ -108,9 +108,16 @@ class DummyCombo:
 class DummyRoot:
     def __init__(self) -> None:
         self.after_calls: list[tuple[int, object]] = []
+        self.after_cancel_calls: list[str] = []
+        self._after_id = 0
 
-    def after(self, delay: int, callback: object) -> None:
+    def after(self, delay: int, callback: object) -> str:
         self.after_calls.append((delay, callback))
+        self._after_id += 1
+        return f"after-{self._after_id}"
+
+    def after_cancel(self, callback_id: str) -> None:
+        self.after_cancel_calls.append(callback_id)
 
 
 class DestroyedRoot:
@@ -470,6 +477,23 @@ def test_poll_stream_skips_redundant_status_update_for_repeated_stderr_message()
     assert controller.status.queue_depth == 0
 
 
+def test_poll_stream_ignores_late_stopped_event_while_already_reconnecting() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "reconnecting"
+    controller.manual_stop = False
+    controller.session = object()
+    controller.events.put(StreamEvent(kind="stopped"))
+    reconnects: list[str] = []
+    controller._schedule_reconnect = lambda: reconnects.append("reconnect")
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert reconnects == []
+    assert controller.session is None
+    assert controller.status.stream_state == "reconnecting"
+    assert controller.status.queue_depth == 0
+
+
 def test_append_visible_entries_configures_each_highlight_tag_once() -> None:
     controller = make_controller()
     controller.highlight_rules = [
@@ -772,6 +796,15 @@ def test_handle_filter_trace_ignores_stale_debounced_callbacks() -> None:
     second_callback()
 
     assert refreshes == ["refresh"]
+
+
+def test_handle_filter_trace_cancels_previous_debounced_refresh() -> None:
+    controller = make_controller()
+
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+
+    assert controller.root.after_cancel_calls == ["after-1"]
 
 
 def test_manual_refresh_invalidates_pending_debounced_filter_refresh() -> None:

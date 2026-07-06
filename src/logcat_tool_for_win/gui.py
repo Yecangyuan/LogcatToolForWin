@@ -512,12 +512,12 @@ class LogcatToolGUI:
     def _handle_filter_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
             return
-        self._schedule_filter_refresh()
+        self._schedule_filter_refresh("full")
 
     def _handle_highlight_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
             return
-        self._refresh_highlight_entries()
+        self._schedule_filter_refresh("highlight")
 
     def _handle_auto_scroll_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
@@ -526,24 +526,37 @@ class LogcatToolGUI:
         if self.auto_scroll_var.get():
             self.text.see(tk.END)
 
-    def _schedule_filter_refresh(self) -> None:
+    def _schedule_filter_refresh(self, refresh_kind: str = "full") -> None:
         pending_callback_id = getattr(self, "_pending_filter_refresh_id", None)
+        pending_refresh_kind = getattr(self, "_pending_filter_refresh_kind", None)
         if pending_callback_id is not None:
             self._cancel_ui_callback(pending_callback_id)
+        next_refresh_kind = (
+            "full"
+            if refresh_kind == "full" or pending_refresh_kind == "full"
+            else "highlight"
+        )
         version = getattr(self, "_filter_refresh_version", 0) + 1
         self._filter_refresh_version = version
+        self._pending_filter_refresh_kind = next_refresh_kind
         self._pending_filter_refresh_id = self._schedule_ui_callback_handle(
             FILTER_REFRESH_DELAY_MS,
-            lambda expected_version=version: self._run_scheduled_filter_refresh(expected_version),
+            lambda expected_version=version, expected_kind=next_refresh_kind: (
+                self._run_scheduled_filter_refresh(expected_version, expected_kind)
+            ),
         )
 
-    def _run_scheduled_filter_refresh(self, expected_version: int) -> None:
+    def _run_scheduled_filter_refresh(self, expected_version: int, expected_kind: str) -> None:
         self._pending_filter_refresh_id = None
+        self._pending_filter_refresh_kind = None
         if self._filter_refresh_suspended:
             return
         if getattr(self, "_filter_refresh_version", 0) != expected_version:
             return
-        self._refresh_visible_entries()
+        if expected_kind == "full":
+            self._refresh_visible_entries()
+            return
+        self._refresh_highlight_entries()
 
     def _invalidate_pending_filter_refreshes(self) -> None:
         pending_callback_id = getattr(self, "_pending_filter_refresh_id", None)
@@ -551,6 +564,7 @@ class LogcatToolGUI:
             self._cancel_ui_callback(pending_callback_id)
         self._filter_refresh_version = getattr(self, "_filter_refresh_version", 0) + 1
         self._pending_filter_refresh_id = None
+        self._pending_filter_refresh_kind = None
 
     def _run_background_task(
         self,

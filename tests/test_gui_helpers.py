@@ -737,7 +737,7 @@ def test_refresh_visible_entries_prepares_keyword_filter_once_for_raw_log_batch(
     assert len(controller.visible_lines) == 3
 
 
-def test_handle_highlight_trace_rehighlights_only_visible_entries(monkeypatch) -> None:
+def test_handle_highlight_trace_debounces_visible_rehighlight(monkeypatch) -> None:
     controller = make_controller()
     hidden_entry = make_entry("hidden line")
     visible_entry = make_entry("visible line")
@@ -761,11 +761,38 @@ def test_handle_highlight_trace_rehighlights_only_visible_entries(monkeypatch) -
 
     gui.LogcatToolGUI._handle_highlight_trace(controller)
 
+    assert renders == []
+    assert controller.root.after_calls[0][0] == gui.FILTER_REFRESH_DELAY_MS
+
+    _delay, callback = controller.root.after_calls[0]
+    callback()
+
     assert full_refreshes == []
     assert renders == ["render"]
     assert calls == [visible_entry]
     assert hidden_entry.highlight_keys == ()
     assert visible_entry.highlight_keys == ("line",)
+
+
+def test_handle_highlight_trace_preserves_pending_full_refresh() -> None:
+    controller = make_controller()
+    refreshes: list[str] = []
+
+    controller._refresh_visible_entries = lambda: refreshes.append("full")
+    controller._refresh_highlight_entries = lambda: refreshes.append("highlight")
+
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+    gui.LogcatToolGUI._handle_highlight_trace(controller)
+
+    assert len(controller.root.after_calls) == 2
+    assert controller.root.after_cancel_calls == ["after-1"]
+
+    _first_delay, first_callback = controller.root.after_calls[0]
+    _second_delay, second_callback = controller.root.after_calls[1]
+    first_callback()
+    second_callback()
+
+    assert refreshes == ["full"]
 
 
 def test_handle_auto_scroll_trace_scrolls_without_full_refresh() -> None:

@@ -617,6 +617,8 @@ class LogcatToolGUI:
         result: T,
         on_success: Callable[[T], None],
     ) -> None:
+        if self._is_ui_closing():
+            return
         if not self._is_current_background_task(task_key, task_version):
             return
         on_success(result)
@@ -628,11 +630,18 @@ class LogcatToolGUI:
         exc: Exception,
         on_error: Callable[[Exception], None],
     ) -> None:
+        if self._is_ui_closing():
+            return
         if not self._is_current_background_task(task_key, task_version):
             return
         on_error(exc)
 
+    def _is_ui_closing(self) -> bool:
+        return bool(getattr(self, "_ui_closing", False))
+
     def _schedule_ui_callback_handle(self, delay: int, callback: Callable[[], None]) -> Optional[object]:
+        if self._is_ui_closing():
+            return None
         try:
             return self.root.after(delay, callback)
         except Exception as exc:
@@ -1934,6 +1943,8 @@ class LogcatToolGUI:
             self.summary_var.set(summary_text)
 
     def _on_close(self) -> None:
+        self._ui_closing = True
+        self._invalidate_pending_filter_refreshes()
         self.save_session_state()
         self._stop_active_session(manual=True)
         self.root.destroy()

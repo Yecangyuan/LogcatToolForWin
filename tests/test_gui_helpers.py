@@ -2426,6 +2426,58 @@ def test_save_session_state_skips_invalid_recent_target_history(monkeypatch) -> 
     assert controller.connect_combo.values == ("192.168.1.112:5555",)
 
 
+def test_on_close_cancels_pending_filter_refresh_before_destroy() -> None:
+    controller = make_controller()
+    destroy_calls: list[str] = []
+    close_steps: list[str] = []
+
+    controller._pending_filter_refresh_id = "after-1"
+    controller._filter_refresh_version = 4
+    controller.save_session_state = lambda: close_steps.append("save")
+    controller._stop_active_session = lambda manual: close_steps.append(f"stop:{manual}") or None
+    controller.root.destroy = lambda: destroy_calls.append("destroy")
+
+    gui.LogcatToolGUI._on_close(controller)
+
+    assert close_steps == ["save", "stop:True"]
+    assert controller.root.after_cancel_calls == ["after-1"]
+    assert controller._pending_filter_refresh_id is None
+    assert controller._filter_refresh_version == 5
+    assert destroy_calls == ["destroy"]
+
+
+def test_on_close_ignores_already_scheduled_background_results(monkeypatch) -> None:
+    controller = make_controller()
+    successes: list[str] = []
+    errors: list[Exception] = []
+    destroy_calls: list[str] = []
+
+    controller.save_session_state = lambda: None
+    controller._stop_active_session = lambda manual: None
+    controller.root.destroy = lambda: destroy_calls.append("destroy")
+
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+
+    gui.LogcatToolGUI._run_background_task(
+        controller,
+        "正在执行...",
+        lambda: "ok",
+        successes.append,
+        errors.append,
+    )
+
+    assert len(controller.root.after_calls) == 1
+
+    gui.LogcatToolGUI._on_close(controller)
+
+    _delay, callback = controller.root.after_calls[0]
+    callback()
+
+    assert successes == []
+    assert errors == []
+    assert destroy_calls == ["destroy"]
+
+
 def test_restore_saved_manual_adb_path_applies_non_empty_path(monkeypatch, tmp_path: Path) -> None:
     controller = make_controller()
     captured: list[Path] = []

@@ -2464,6 +2464,46 @@ def test_clear_device_logcat_warns_when_adb_is_not_ready(monkeypatch) -> None:
     assert background_calls == []
 
 
+def test_handle_clear_logcat_error_offers_to_switch_adb_path_for_launch_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_clear_logcat_error(
+        controller,
+        RuntimeError("无法启动 adb：[WinError 6] 句柄无效。"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
     controller = make_controller()
     device = make_device("R58M12345")

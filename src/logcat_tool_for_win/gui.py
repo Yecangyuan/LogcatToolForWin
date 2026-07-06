@@ -1396,8 +1396,11 @@ class LogcatToolGUI:
         self._update_status()
 
     def _handle_clear_logcat_error(self, exc: Exception) -> None:
-        messagebox.showerror("清空失败", str(exc))
-        self.status.last_error = str(exc)
+        message = str(exc)
+        if self._show_adb_launch_recovery_prompt(message):
+            return
+        messagebox.showerror("清空失败", message)
+        self.status.last_error = message
         self._update_status()
 
     def restart_adb(self) -> None:

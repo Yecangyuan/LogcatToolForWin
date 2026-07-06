@@ -13,3 +13,10 @@ def test_readme_documents_latest_release_assets_for_main_pushes() -> None:
 
     assert "rolling `latest` GitHub Release" in readme
     assert "https://github.com/Yecangyuan/LogcatToolForWin/releases/tag/latest" in readme
+
+
+def test_readme_documents_adb_crash_fallback_guidance() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "0xc0000005" in readme
+    assert "automatically fall back to another detected `adb.exe`" in readme

@@ -125,6 +125,12 @@ def _is_invalid_windows_handle(exc: OSError) -> bool:
     )
 
 
+def _is_windows_access_violation_returncode(returncode: int) -> bool:
+    if not _is_windows():
+        return False
+    return returncode in (0xC0000005, -1073741819)
+
+
 def _iter_unique_paths(paths: Iterator[Optional[Path]]) -> Iterator[Path]:
     seen: set[str] = set()
     for path in paths:
@@ -257,6 +263,15 @@ def _format_invalid_handle_adb_error(adb_paths: list[Path], exc: OSError) -> ADB
     attempted_paths = "；".join(str(path) for path in adb_paths)
     return ADBCommandError(
         f"无法启动 adb：{exc}\n"
+        f"已尝试的 adb：{attempted_paths}\n"
+        f"{ADB_INVALID_HANDLE_HINT}"
+    )
+
+
+def _format_crashed_adb_error(adb_paths: list[Path], returncode: int) -> ADBCommandError:
+    attempted_paths = "；".join(str(path) for path in adb_paths)
+    return ADBCommandError(
+        f"adb.exe 启动后崩溃退出（0x{returncode & 0xFFFFFFFF:08X}）\n"
         f"已尝试的 adb：{attempted_paths}\n"
         f"{ADB_INVALID_HANDLE_HINT}"
     )
@@ -416,6 +431,10 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
                 if _is_invalid_windows_handle(exc):
                     raise _format_invalid_handle_adb_error(adb_paths, exc) from exc
                 raise ADBCommandError(f"无法启动 adb：{exc}") from exc
+            if _is_windows_access_violation_returncode(result.returncode):
+                if path_index + 1 < len(adb_paths):
+                    break
+                raise _format_crashed_adb_error(adb_paths, result.returncode)
             _remember_runtime_adb_path(adb_path)
             if result.returncode != 0:
                 stdout_text = (result.stdout or "").strip()

@@ -271,6 +271,142 @@ def test_run_adb_reports_actionable_hint_when_all_candidate_adb_paths_fail_inval
     assert "LOGCAT_TOOL_ADB" in message
 
 
+def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_crashes_with_access_violation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_windows_startupinfo,
+) -> None:
+    embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
+    embedded_adb.parent.mkdir(parents=True)
+    embedded_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    path_adb.parent.mkdir(parents=True)
+    path_adb.write_text("adb", encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="connected to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    frozen_sys = SimpleNamespace(
+        executable=str(tmp_path / "logcat-tool-for-win.exe"),
+        frozen=True,
+        _MEIPASS=str(tmp_path / "_MEI12345"),
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[0] == str(embedded_adb):
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=0xC0000005,
+                stdout="",
+                stderr="",
+            )
+        return completed
+
+    monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb._runtime_adb_path", None, raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb.sys", frozen_sys)
+    monkeypatch.setattr("shutil.which", lambda name: str(path_adb) if name == "adb" else None)
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    result = run_adb(["connect", "192.168.0.8:5555"])
+
+    assert result is completed
+    assert commands[0][0] == str(embedded_adb)
+    assert commands[-1][0] == str(path_adb)
+    assert str(path_adb) in [command[0] for command in commands]
+
+
+def test_build_logcat_command_uses_runtime_fallback_adb_after_access_violation_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_windows_startupinfo,
+) -> None:
+    embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
+    embedded_adb.parent.mkdir(parents=True)
+    embedded_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    path_adb.parent.mkdir(parents=True)
+    path_adb.write_text("adb", encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        args=["adb", "devices", "-l"],
+        returncode=0,
+        stdout="List of devices attached\n\n",
+        stderr="",
+    )
+    frozen_sys = SimpleNamespace(
+        executable=str(tmp_path / "logcat-tool-for-win.exe"),
+        frozen=True,
+        _MEIPASS=str(tmp_path / "_MEI12345"),
+    )
+
+    def fake_run(command, **kwargs):
+        if command[0] == str(embedded_adb):
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=0xC0000005,
+                stdout="",
+                stderr="",
+            )
+        return completed
+
+    monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb._runtime_adb_path", None, raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb.sys", frozen_sys)
+    monkeypatch.setattr("shutil.which", lambda name: str(path_adb) if name == "adb" else None)
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", fake_run)
+
+    run_adb(["devices", "-l"])
+    command = build_logcat_command("SERIAL", FilterState())
+
+    assert command[0] == str(path_adb)
+
+
+def test_run_adb_reports_actionable_hint_when_all_candidate_adb_paths_crash_with_access_violation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_windows_startupinfo,
+) -> None:
+    embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
+    embedded_adb.parent.mkdir(parents=True)
+    embedded_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    path_adb.parent.mkdir(parents=True)
+    path_adb.write_text("adb", encoding="utf-8")
+    frozen_sys = SimpleNamespace(
+        executable=str(tmp_path / "logcat-tool-for-win.exe"),
+        frozen=True,
+        _MEIPASS=str(tmp_path / "_MEI12345"),
+    )
+
+    def crash_adb(command, **kwargs):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0xC0000005,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb._runtime_adb_path", None, raising=False)
+    monkeypatch.setattr("logcat_tool_for_win.adb.sys", frozen_sys)
+    monkeypatch.setattr("shutil.which", lambda name: str(path_adb) if name == "adb" else None)
+    monkeypatch.setattr("logcat_tool_for_win.adb.subprocess.run", crash_adb)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        run_adb(["version"])
+
+    message = str(exc_info.value)
+    assert "adb.exe 启动后崩溃退出（0xC0000005）" in message
+    assert str(embedded_adb) in message
+    assert str(path_adb) in message
+    assert "logcat-tool-for-win-legacy-win7.zip" in message
+    assert "LOGCAT_TOOL_ADB" in message
+
+
 def test_build_logcat_command_uses_resolved_adb_path_and_filter_spec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

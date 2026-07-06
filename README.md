@@ -111,6 +111,10 @@ TCP connect fails:
 - If the automatic USB fallback succeeds, the status text will mention `首次直连失败` and that it has automatically retried after enabling wireless ADB for the selected USB device.
 - Confirm the device is already listening for TCP `adb` and reachable from the Windows machine.
 
+`adb.exe` shows an application error such as `0xc0000005`:
+- Current builds automatically fall back to another detected `adb.exe` when the bundled one crashes at startup.
+- If every candidate `adb.exe` crashes, switch `ADB 路径` to a known-good Android platform-tools install, or use the `logcat-tool-for-win-legacy-win7.zip` build on Windows 7 / 8.0.
+
 PyInstaller build succeeds but portable ZIP creation fails:
 - Confirm `dist/logcat-tool-for-win.exe` exists.
 - Confirm the Windows platform-tools archive was extracted before running `scripts/build_portable.py`.

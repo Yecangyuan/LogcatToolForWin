@@ -516,6 +516,9 @@ class LogcatToolGUI:
             return
         self._refresh_visible_entries()
 
+    def _invalidate_pending_filter_refreshes(self) -> None:
+        self._filter_refresh_version = getattr(self, "_filter_refresh_version", 0) + 1
+
     def _run_background_task(
         self,
         pending_message: str,
@@ -1357,6 +1360,7 @@ class LogcatToolGUI:
         return None, False
 
     def _refresh_visible_entries(self) -> None:
+        self._invalidate_pending_filter_refreshes()
         filters = self._current_filters()
         prepared_filters = prepare_filter_state(filters)
         rules = self._current_highlight_rules()

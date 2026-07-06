@@ -758,6 +758,22 @@ def test_handle_filter_trace_ignores_stale_debounced_callbacks() -> None:
     assert refreshes == ["refresh"]
 
 
+def test_manual_refresh_invalidates_pending_debounced_filter_refresh() -> None:
+    controller = make_controller()
+    renders: list[str] = []
+    controller._render_visible = lambda: renders.append("render")
+
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+    gui.LogcatToolGUI._refresh_visible_entries(controller)
+
+    assert renders == ["render"]
+
+    _delay, callback = controller.root.after_calls[0]
+    callback()
+
+    assert renders == ["render"]
+
+
 def test_load_named_preset_batches_filter_refreshes() -> None:
     controller = make_controller()
     refreshes: list[str] = []

@@ -90,6 +90,9 @@ To produce the same output locally that CI packages on Windows:
 
 This workflow uploads build artifacts for every qualifying run. For `main` pushes and `v*` tags, it also creates or updates the matching GitHub Release assets.
 
+Current rolling release page:
+- `https://github.com/Yecangyuan/LogcatToolForWin/releases/tag/latest`
+
 ## Troubleshooting
 
 `adb` is reported as missing:
@@ -103,7 +106,9 @@ No devices appear:
 
 TCP connect fails:
 - Enter targets as `IP` or `IP:port`; when the port is omitted, the app uses `5555`.
-- To prepare a USB device for wireless ADB, select the USB device and click `USB 开启无线`. The app runs `adb tcpip 5555`, tries to detect the device Wi-Fi IP, then connects to `IP:5555` and refreshes the device list.
+- The `连接` button now tries direct TCP first. If the first direct connection fails, the app will automatically retry the same `IP:port` after enabling wireless ADB on the currently selected authorized USB device (`自动尝试为当前选中的 USB 设备开启无线 ADB 后再重连`).
+- To prepare a USB device for wireless ADB explicitly, select the USB device and click `USB 开启无线`. The app runs `adb tcpip 5555`, tries to detect the device Wi-Fi IP, then connects to `IP:5555` and refreshes the device list.
+- If the automatic USB fallback succeeds, the status text will mention `首次直连失败` and that it has automatically retried after enabling wireless ADB for the selected USB device.
 - Confirm the device is already listening for TCP `adb` and reachable from the Windows machine.
 
 PyInstaller build succeeds but portable ZIP creation fails:

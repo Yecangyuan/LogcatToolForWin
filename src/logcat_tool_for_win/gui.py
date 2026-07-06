@@ -636,6 +636,10 @@ class LogcatToolGUI:
         self._update_status()
 
     def enable_wireless_adb(self) -> None:
+        if not self.status.adb_ready:
+            messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
+            return
+
         try:
             device = self._current_device()
         except ValueError as exc:
@@ -830,6 +834,10 @@ class LogcatToolGUI:
         self._render_visible()
 
     def clear_device_logcat(self) -> None:
+        if not self.status.adb_ready:
+            messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
+            return
+
         try:
             device = self._current_device()
         except ValueError as exc:

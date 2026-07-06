@@ -1261,6 +1261,7 @@ def test_clear_device_logcat_schedules_background_clear(monkeypatch) -> None:
     selected_device = make_device("USB123")
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
+    controller.status.adb_ready = True
 
     controller._current_device = lambda: selected_device
 
@@ -1284,6 +1285,31 @@ def test_clear_device_logcat_schedules_background_clear(monkeypatch) -> None:
 
     assert calls == [("clear", "USB123")]
     assert controller.status.last_error == "已清空设备 logcat。"
+
+
+def test_clear_device_logcat_warns_when_adb_is_not_ready(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    warnings: list[tuple[str, str]] = []
+    background_calls: list[str] = []
+
+    controller.status.adb_ready = False
+    controller._current_device = lambda: selected_device
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.clear_device_logcat(controller)
+
+    assert warnings == [("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")]
+    assert background_calls == []
 
 
 def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
@@ -1416,6 +1442,7 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
     selected_device = make_device("USB123")
     tcp_device = make_device("192.168.1.111:5555")
     calls: list[tuple[str, object]] = []
+    controller.status.adb_ready = True
 
     controller.devices = [selected_device]
     controller.device_var.set(gui.device_label(selected_device))
@@ -1455,10 +1482,36 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
     assert controller.status.last_error == "connected to 192.168.1.111:5555"
 
 
+def test_enable_wireless_adb_warns_when_adb_is_not_ready(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    warnings: list[tuple[str, str]] = []
+    background_calls: list[str] = []
+
+    controller.status.adb_ready = False
+    controller._current_device = lambda: selected_device
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.enable_wireless_adb(controller)
+
+    assert warnings == [("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")]
+    assert background_calls == []
+
+
 def test_enable_wireless_adb_keeps_connected_target_when_device_refresh_fails(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")
     target = "192.168.1.111:5555"
+    controller.status.adb_ready = True
 
     controller.devices = [selected_device]
     controller.device_var.set(gui.device_label(selected_device))
@@ -1489,6 +1542,7 @@ def test_enable_wireless_adb_keeps_connected_target_when_device_refresh_fails(mo
 def test_enable_wireless_adb_explains_manual_connect_when_ip_is_unknown(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")
+    controller.status.adb_ready = True
 
     controller._current_device = lambda: selected_device
     controller._run_background_task = lambda _message, action, on_success, _on_error: on_success(action())

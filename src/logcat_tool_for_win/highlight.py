@@ -20,7 +20,15 @@ def _lower_pattern(pattern: str) -> str:
     return pattern.lower()
 
 
+def _rules_cache_key(rules: list[HighlightRule]) -> tuple[tuple[str, str, bool], ...]:
+    return tuple((rule.name, rule.pattern, rule.case_sensitive) for rule in rules)
+
+
 def match_highlight_rules(entry: LogEntry, rules: list[HighlightRule]) -> tuple[str, ...]:
+    cache_key = _rules_cache_key(rules)
+    if entry.highlight_match_cache_key == cache_key:
+        return entry.cached_highlight_keys
+
     matches: list[str] = []
     lowered_raw_line: Optional[str] = entry.lowered_raw_line or None
     for rule in rules:
@@ -37,4 +45,6 @@ def match_highlight_rules(entry: LogEntry, rules: list[HighlightRule]) -> tuple[
             pattern = _lower_pattern(rule.pattern)
         if pattern in source:
             matches.append(rule.name)
-    return tuple(matches)
+    entry.highlight_match_cache_key = cache_key
+    entry.cached_highlight_keys = tuple(matches)
+    return entry.cached_highlight_keys

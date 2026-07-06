@@ -44,6 +44,8 @@ class LogEntry:
     highlight_keys: tuple[str, ...] = ()
     lowered_raw_line: str = ""
     lowered_search_text: str = ""
+    highlight_match_cache_key: tuple[tuple[str, str, bool], ...] = ()
+    cached_highlight_keys: tuple[str, ...] = ()
 
 
 @dataclass

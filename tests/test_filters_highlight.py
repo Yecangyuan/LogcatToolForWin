@@ -19,6 +19,17 @@ class LowerCountingStr(str):
         return super().lower()
 
 
+class ContainsCountingStr(str):
+    def __new__(cls, value: str) -> "ContainsCountingStr":
+        instance = super().__new__(cls, value)
+        instance.contains_calls = 0
+        return instance
+
+    def __contains__(self, item: object) -> bool:
+        self.contains_calls += 1
+        return super().__contains__(item)
+
+
 class ExplodingIndexLevelOrder(tuple):
     def index(self, value: object, start: int = 0, stop: int = 9223372036854775807) -> int:
         raise AssertionError("LEVEL_ORDER.index should not be used in the log filter hot path")
@@ -216,6 +227,60 @@ def test_match_highlight_rules_reuses_lowered_raw_line_across_repeated_matches()
     assert match_highlight_rules(entry, rules) == ("ANR", "crash")
     assert match_highlight_rules(entry, rules) == ("ANR", "crash")
     assert raw_line.lower_calls == 1
+
+
+def test_match_highlight_rules_reuses_cached_matches_for_same_rule_set() -> None:
+    raw_line = ContainsCountingStr("ANR detected")
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="W",
+        tag="ActivityManager",
+        message="ANR detected",
+        raw_line=raw_line,
+    )
+    rules = [
+        HighlightRule(
+            name="ANR",
+            pattern="ANR",
+            foreground="#ffcc00",
+            case_sensitive=True,
+        )
+    ]
+
+    assert match_highlight_rules(entry, rules) == ("ANR",)
+    assert match_highlight_rules(entry, rules) == ("ANR",)
+    assert raw_line.contains_calls == 1
+
+
+def test_match_highlight_rules_invalidates_cache_when_rule_set_changes() -> None:
+    raw_line = ContainsCountingStr("ANR detected")
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="W",
+        tag="ActivityManager",
+        message="ANR detected",
+        raw_line=raw_line,
+    )
+    first_rules = [
+        HighlightRule(
+            name="ANR",
+            pattern="ANR",
+            foreground="#ffcc00",
+            case_sensitive=True,
+        )
+    ]
+    second_rules = [
+        HighlightRule(
+            name="detected",
+            pattern="detected",
+            foreground="#ffaa00",
+            case_sensitive=True,
+        )
+    ]
+
+    assert match_highlight_rules(entry, first_rules) == ("ANR",)
+    assert match_highlight_rules(entry, second_rules) == ("detected",)
+    assert raw_line.contains_calls == 2
 
 
 def test_default_level_colors_include_error_red() -> None:

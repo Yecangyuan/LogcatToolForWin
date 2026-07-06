@@ -43,6 +43,12 @@ def prepare_filter_state(state: FilterState) -> PreparedFilterState:
     )
 
 
+def _lowered_search_text(entry: LogEntry) -> str:
+    if not entry.lowered_search_text:
+        entry.lowered_search_text = " ".join([entry.tag, entry.message, entry.raw_line]).lower()
+    return entry.lowered_search_text
+
+
 def entry_matches_prepared(entry: LogEntry, state: PreparedFilterState) -> bool:
     entry_level = _level_rank(entry.level)
     if entry_level is None or state.minimum_rank is None:
@@ -56,8 +62,7 @@ def entry_matches_prepared(entry: LogEntry, state: PreparedFilterState) -> bool:
     if not state.keyword_lower:
         return True
 
-    haystack = " ".join([entry.tag, entry.message, entry.raw_line]).lower()
-    return state.keyword_lower in haystack
+    return state.keyword_lower in _lowered_search_text(entry)
 
 
 def entry_matches(entry: LogEntry, state: FilterState) -> bool:
@@ -74,5 +79,4 @@ def entry_matches(entry: LogEntry, state: FilterState) -> bool:
     if not state.keyword:
         return True
 
-    haystack = " ".join([entry.tag, entry.message, entry.raw_line]).lower()
-    return state.keyword.lower() in haystack
+    return state.keyword.lower() in _lowered_search_text(entry)

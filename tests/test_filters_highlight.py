@@ -122,6 +122,34 @@ def test_entry_matches_skips_keyword_work_when_level_or_tag_rejects_entry() -> N
     assert keyword.lower_calls == 0
 
 
+def test_entry_matches_populates_lowered_search_text_on_first_keyword_match() -> None:
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="E",
+        tag="MyApp",
+        message="fatal crash happened",
+        raw_line="raw fatal crash happened",
+    )
+    state = FilterState(minimum_level="W", tag_filters=("MyApp",), keyword="crash")
+
+    assert entry_matches(entry, state) is True
+    assert entry.lowered_search_text == "myapp fatal crash happened raw fatal crash happened"
+
+
+def test_entry_matches_prepared_reuses_cached_lowered_search_text_when_present() -> None:
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="E",
+        tag="MyApp",
+        message="fatal crash happened",
+        raw_line="raw fatal crash happened",
+        lowered_search_text="cached only token",
+    )
+    prepared = filters_module.prepare_filter_state(FilterState(minimum_level="W", keyword="token"))
+
+    assert filters_module.entry_matches_prepared(entry, prepared) is True
+
+
 def test_match_highlight_rules_returns_matching_names() -> None:
     entry = LogEntry(
         timestamp_text="06-18 10:00:00.000",

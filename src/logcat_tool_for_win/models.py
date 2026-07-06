@@ -43,6 +43,7 @@ class LogEntry:
     matches_filters: bool = True
     highlight_keys: tuple[str, ...] = ()
     lowered_raw_line: str = ""
+    lowered_search_text: str = ""
 
 
 @dataclass

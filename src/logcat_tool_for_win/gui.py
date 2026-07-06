@@ -905,6 +905,8 @@ class LogcatToolGUI:
             device = self._current_device()
         except ValueError as exc:
             messagebox.showwarning("需要选择设备", str(exc))
+            if self.status.stream_state == "reconnecting":
+                self._fail_retry_stream(str(exc).strip())
             return
 
         if device.state != "device":

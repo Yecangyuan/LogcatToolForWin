@@ -1024,6 +1024,7 @@ class LogcatToolGUI:
     def _poll_stream(self) -> None:
         updated = False
         full_render_required = False
+        status_dirty = False
         new_visible_entries: list[LogEntry] = []
         filters_snapshot: Optional[FilterState] = None
         prepared_filters_snapshot: Optional[PreparedFilterState] = None
@@ -1044,6 +1045,7 @@ class LogcatToolGUI:
                 if self.status.reconnect_attempt:
                     self.status.reconnect_attempt = 0
                     self.status.last_error = ""
+                    status_dirty = True
                 if filters_snapshot is None:
                     filters_snapshot = self._current_filters()
                     prepared_filters_snapshot = prepare_filter_state(filters_snapshot)
@@ -1063,6 +1065,7 @@ class LogcatToolGUI:
                 if self.manual_stop or self.status.stream_state not in {"streaming", "reconnecting"}:
                     continue
                 self.status.last_error = event.message
+                status_dirty = True
             elif event.kind == "stopped":
                 self.session = None
                 if self.status.stream_state == "streaming":
@@ -1075,7 +1078,7 @@ class LogcatToolGUI:
                 self._append_visible_entries(new_visible_entries)
 
         queue_depth = self.events.qsize()
-        status_changed = processed > 0 or self.status.queue_depth != queue_depth
+        status_changed = status_dirty or self.status.queue_depth != queue_depth
         self.status.queue_depth = queue_depth
         if status_changed:
             self._update_status()

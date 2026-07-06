@@ -386,6 +386,23 @@ def test_poll_stream_appends_new_visible_lines_without_full_redraw() -> None:
     assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
 
 
+def test_poll_stream_skips_redundant_status_update_for_line_only_batch() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("first")))
+    status_updates: list[str] = []
+    controller._update_status = lambda: status_updates.append("status")
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert status_updates == []
+    assert len(controller.raw_lines) == 1
+    assert len(controller.visible_lines) == 1
+    assert controller.status.queue_depth == 0
+    assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+
+
 def test_append_visible_entries_configures_each_highlight_tag_once() -> None:
     controller = make_controller()
     controller.highlight_rules = [

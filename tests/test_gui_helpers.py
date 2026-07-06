@@ -2016,6 +2016,49 @@ def test_handle_connect_tcp_error_shows_selected_usb_ip_when_target_mismatches(m
     assert controller.status.last_error == errors[0][1]
 
 
+def test_handle_connect_tcp_error_offers_to_switch_adb_path_for_launch_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_connect_tcp_error(
+        controller,
+        ADBCommandError("无法启动 adb：[WinError 6] 句柄无效。"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "已先尝试直连目标地址。"
+            "如果当前选中的是已授权的 USB 设备，程序也会自动尝试为它开启无线 ADB 后再重连；"
+            "也可以手动点“USB 开启无线”。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_connect_tcp_reports_retarget_failure_when_usb_device_ip_connect_still_fails(
     monkeypatch,
 ) -> None:

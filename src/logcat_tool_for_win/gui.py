@@ -888,6 +888,8 @@ class LogcatToolGUI:
 
     def _handle_connect_tcp_error(self, exc: Exception) -> None:
         message = self._format_connect_tcp_error_message(exc)
+        if self._show_adb_launch_recovery_prompt(message):
+            return
         messagebox.showerror("连接失败", message)
         self.status.last_error = message
         self._update_status()
@@ -1211,6 +1213,29 @@ class LogcatToolGUI:
         return (
             f"{message}\n\n"
             "请确认当前选择的是已授权 USB 调试的设备，并保持数据线连接稳定后再试。"
+        )
+
+    def _show_adb_launch_recovery_prompt(self, message: str) -> bool:
+        if not self._is_adb_launch_failure_message(message):
+            return False
+        prompt = (
+            f"{message}\n\n"
+            f"可直接点界面里的“{ADB_PATH_BUTTON_LABEL}”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？"
+        )
+        should_configure = messagebox.askyesno("ADB 无法启动", prompt)
+        self.status.last_error = prompt
+        self._update_status()
+        if should_configure:
+            self.configure_adb_path()
+        return True
+
+    def _is_adb_launch_failure_message(self, message: str) -> bool:
+        normalized = message.strip()
+        return normalized.startswith("无法启动 adb：") or normalized.startswith(
+            "adb.exe 启动后崩溃退出（0x"
         )
 
     def _remember_connect_target(self, target: str) -> None:

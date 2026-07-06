@@ -1210,7 +1210,7 @@ def test_handle_connect_tcp_error_explains_usb_to_wireless_next_step(monkeypatch
             "连接失败",
             "无法连接 192.168.1.111:5555。原始错误：connection refused\n\n"
             "当前“连接”按钮只会直连目标地址。"
-            "如果这台手机还没开启无线 ADB，请先用 USB 连上后点“开启无线”。",
+            "如果这台手机还没开启无线 ADB，请先用 USB 连上后点“USB 开启无线”。",
         )
     ]
     assert controller.status.last_error == errors[0][1]

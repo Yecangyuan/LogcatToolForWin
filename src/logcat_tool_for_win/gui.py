@@ -73,6 +73,7 @@ ACCENT = "#22C55E"
 WARN = "#FB923C"
 ERROR = "#F87171"
 HIGHLIGHT_TAG_PREFIX = "highlight::"
+WIRELESS_ADB_BUTTON_LABEL = "USB 开启无线"
 STREAM_STATE_LABELS = {
     "idle": "空闲",
     "streaming": "采集中",
@@ -266,7 +267,7 @@ class LogcatToolGUI:
         )
         ttk.Button(
             toolbar,
-            text="开启无线",
+            text=WIRELESS_ADB_BUTTON_LABEL,
             style="App.TButton",
             command=self.enable_wireless_adb,
         ).pack(side=tk.LEFT, padx=4)
@@ -720,7 +721,7 @@ class LogcatToolGUI:
         return (
             f"{message}\n\n"
             "当前“连接”按钮只会直连目标地址。"
-            "如果这台手机还没开启无线 ADB，请先用 USB 连上后点“开启无线”。"
+            f"如果这台手机还没开启无线 ADB，请先用 USB 连上后点“{WIRELESS_ADB_BUTTON_LABEL}”。"
         )
 
     def _format_wireless_adb_error_message(self, exc: Exception) -> str:

@@ -203,7 +203,7 @@ def test_connect_device_adds_actionable_hint_to_failed_connect_output(
     message = str(exc_info.value)
     assert "无法连接 192.168.0.8:5555" in message
     assert "请确认手机和电脑在同一局域网" in message
-    assert "点“开启无线”" in message
+    assert "点“USB 开启无线”" in message
     assert "原始错误：failed to connect to 192.168.0.8:5555: Connection refused" in message
 
 
@@ -223,7 +223,7 @@ def test_connect_device_explains_connection_refused_failures(
 
     message = str(exc_info.value)
     assert "目标端口拒绝连接" in message
-    assert "先用 USB 连上后点“开启无线”" in message
+    assert "先用 USB 连上后点“USB 开启无线”" in message
 
 
 def test_connect_device_explains_timeout_failures(

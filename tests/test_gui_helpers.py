@@ -1546,6 +1546,52 @@ def test_connect_tcp_ignores_invalid_host_when_port_is_usable_for_selected_usb_d
     assert controller.status.last_error == "connected to 192.168.1.111:5556"
 
 
+def test_connect_tcp_ignores_invalid_host_without_port_for_selected_usb_device(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    tcp_device = make_device("192.168.1.111:5555")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.status.active_device_serial = usb_device.serial
+    controller.connect_var.set("bad-target")
+    warnings: list[tuple[str, str]] = []
+    captured: dict[str, object] = {}
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+    controller._prepare_wireless_adb = lambda serial, port, preferred_target="": (
+        "192.168.1.111:5555",
+        "connected to 192.168.1.111:5555",
+        [usb_device, tcp_device],
+    )
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+
+    assert warnings == []
+    assert captured["message"] == "正在为 USB123 开启无线 ADB..."
+    result = captured["action"]()
+    captured["on_success"](result)
+    assert controller.connect_var.get() == "192.168.1.111:5555"
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == tcp_device.serial
+    assert controller.status.last_error == "connected to 192.168.1.111:5555"
+
+
 def test_connect_tcp_retries_direct_tcp_connection(monkeypatch) -> None:
     controller = make_controller()
     device = make_device("192.168.1.111:5555")

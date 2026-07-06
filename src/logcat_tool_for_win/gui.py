@@ -818,7 +818,16 @@ class LogcatToolGUI:
         try:
             target = normalize_tcp_target(raw_target)
         except ValueError as exc:
-            if selected_usb_device is not None and ":" in raw_target:
+            if selected_usb_device is not None:
+                if ":" not in raw_target:
+                    self._run_background_task(
+                        f"正在为 {selected_usb_device.serial} 开启无线 ADB...",
+                        lambda: self._prepare_wireless_adb(selected_usb_device.serial, DEFAULT_TCP_PORT),
+                        self._handle_wireless_adb_success,
+                        self._handle_wireless_adb_error,
+                        task_key=DEVICE_SYNC_TASK_KEY,
+                    )
+                    return
                 _host_text, port_text = (part.strip() for part in raw_target.rsplit(":", 1))
                 try:
                     port = validate_tcp_port(int(port_text))

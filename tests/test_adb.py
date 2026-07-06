@@ -507,6 +507,38 @@ def test_connect_device_adds_actionable_hint_to_failed_connect_output(
     assert "原始错误：failed to connect to 192.168.0.8:5555: Connection refused" in message
 
 
+def test_connect_device_preserves_adb_launch_failure_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "logcat_tool_for_win.adb.run_adb",
+        lambda args, timeout=10.0: (_ for _ in ()).throw(
+            ADBCommandError("无法启动 adb：[WinError 6] 句柄无效。")
+        ),
+    )
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555")
+
+    assert str(exc_info.value) == "无法启动 adb：[WinError 6] 句柄无效。"
+
+
+def test_connect_device_preserves_adb_crash_failure_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "logcat_tool_for_win.adb.run_adb",
+        lambda args, timeout=10.0: (_ for _ in ()).throw(
+            ADBCommandError("adb.exe 启动后崩溃退出（0xC0000005）")
+        ),
+    )
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555")
+
+    assert str(exc_info.value) == "adb.exe 启动后崩溃退出（0xC0000005）"
+
+
 def test_connect_device_explains_connection_refused_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

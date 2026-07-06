@@ -360,6 +360,8 @@ def _specific_connect_failure_hint(target: str, message: str) -> str:
 
 def format_connect_error(target: str, error: ADBCommandError) -> ADBCommandError:
     message = str(error).strip()
+    if _is_adb_launch_failure_message(message):
+        return ADBCommandError(message)
     detail = _specific_connect_failure_hint(target, message)
     hint = TCP_CONNECT_FAILURE_HINT if not detail else f"{detail} {TCP_CONNECT_FAILURE_HINT}"
     if not message:
@@ -399,6 +401,13 @@ def _extract_first_non_loopback_ipv4(output: str) -> str:
         if address.version == 4 and not address.is_loopback:
             return str(address)
     return ""
+
+
+def _is_adb_launch_failure_message(message: str) -> bool:
+    normalized = message.strip()
+    return normalized.startswith("无法启动 adb：") or normalized.startswith(
+        "adb.exe 启动后崩溃退出（0x"
+    )
 
 
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:

@@ -967,6 +967,41 @@ def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
     assert controller.device_var.get() == gui.device_label(device)
 
 
+def test_apply_devices_aligns_selection_to_active_stream_target() -> None:
+    controller = make_controller()
+    active_device = make_device("USB123")
+    other_device = make_device("USB456")
+    controller.devices = [active_device, other_device]
+    controller.device_var.set(gui.device_label(other_device))
+    controller.status.stream_state = "streaming"
+    controller.status.active_device_serial = active_device.serial
+
+    gui.LogcatToolGUI._apply_devices(controller, [other_device, active_device])
+
+    assert controller.device_var.get() == gui.device_label(active_device)
+    assert controller.status.active_device_serial == active_device.serial
+
+
+def test_apply_devices_keeps_stale_active_stream_target_during_refresh() -> None:
+    controller = make_controller()
+    active_device = make_device("USB123")
+    other_device = make_device("USB456")
+    controller.devices = [active_device]
+    controller.device_var.set(gui.device_label(active_device))
+    controller.status.stream_state = "streaming"
+    controller.status.active_device_serial = active_device.serial
+
+    gui.LogcatToolGUI._apply_devices(controller, [other_device])
+
+    assert [device.serial for device in controller.devices] == ["USB456", "USB123"]
+    assert controller.device_var.get() == gui.device_label(active_device)
+    assert controller.device_combo.values == (
+        gui.device_label(other_device),
+        gui.device_label(active_device),
+    )
+    assert controller.status.active_device_serial == active_device.serial
+
+
 def test_current_device_resolves_duplicate_models_by_unique_label() -> None:
     controller = make_controller()
     first_device = make_modeled_device("USB123", "Pixel_8")

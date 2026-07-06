@@ -599,13 +599,59 @@ class LogcatToolGUI:
     def focus_keyword(self) -> None:
         self.keyword_entry.focus_set()
 
+    def _stream_target_serial(self) -> str:
+        return getattr(self, "reconnect_target_serial", "") or self.status.active_device_serial
+
+    def _build_stale_stream_target_device(self, serial: str) -> DeviceInfo:
+        for device in self.devices:
+            if device.serial == serial:
+                return DeviceInfo(
+                    serial=device.serial,
+                    display_name=device.display_name,
+                    transport=device.transport,
+                    state="offline",
+                    model=device.model,
+                    product=device.product,
+                    raw_descriptor=device.raw_descriptor,
+                )
+        transport = "tcp" if ":" in serial else "usb"
+        return DeviceInfo(
+            serial=serial,
+            display_name=serial,
+            transport=transport,
+            state="offline",
+            model="",
+            product="",
+            raw_descriptor=f"{serial}\toffline",
+        )
+
+    def _preserve_stream_target_device(
+        self,
+        devices: list[DeviceInfo],
+    ) -> tuple[list[DeviceInfo], Optional[DeviceInfo]]:
+        target_serial = self._stream_target_serial()
+        if not target_serial:
+            return list(devices), None
+        preserved_devices = list(devices)
+        for device in preserved_devices:
+            if device.serial == target_serial:
+                return preserved_devices, device
+        stale_target = self._build_stale_stream_target_device(target_serial)
+        preserved_devices.append(stale_target)
+        return preserved_devices, stale_target
+
     def _apply_devices(self, devices: list[DeviceInfo]) -> None:
         current_label = self.device_var.get()
         preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
+        stream_target: Optional[DeviceInfo] = None
+        if preserve_stream_target:
+            devices, stream_target = self._preserve_stream_target_device(devices)
         self.devices = devices
         labels = [device_label(device) for device in self.devices]
         self.device_combo["values"] = labels
-        if current_label in labels:
+        if preserve_stream_target and stream_target is not None:
+            self.device_var.set(device_label(stream_target))
+        elif current_label in labels:
             self.device_var.set(current_label)
         elif labels:
             self.device_var.set(labels[0])
@@ -619,10 +665,16 @@ class LogcatToolGUI:
 
     def _handle_refresh_devices_error(self, exc: Exception) -> None:
         preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
+        if preserve_stream_target:
+            self.devices, stream_target = self._preserve_stream_target_device(self.devices)
+        else:
+            stream_target = None
         labels = [device_label(device) for device in self.devices]
         if labels:
             self.device_combo["values"] = labels
-            if self.device_var.get() not in labels:
+            if preserve_stream_target and stream_target is not None:
+                self.device_var.set(device_label(stream_target))
+            elif self.device_var.get() not in labels:
                 self.device_var.set(labels[0])
         else:
             self.device_combo["values"] = ()

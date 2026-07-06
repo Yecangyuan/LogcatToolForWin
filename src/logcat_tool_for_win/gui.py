@@ -1086,6 +1086,8 @@ class LogcatToolGUI:
             return target, self._connect_tcp_target(target)
         except ADBCommandError as exc:
             direct_error = exc
+            if self._is_adb_launch_failure_message(str(exc)):
+                raise
             if selected_usb_device is None:
                 raise
             route_ip = self._route_ip_for_serial(selected_usb_device.serial)

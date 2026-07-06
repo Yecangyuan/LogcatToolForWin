@@ -1103,6 +1103,40 @@ def test_start_stream_resets_stale_queue_depth(monkeypatch) -> None:
     assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
 
 
+def test_start_stream_cancels_stale_poll_callback_before_scheduling_new_one(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    controller.status.adb_ready = True
+    controller._poll_stream_callback_id = "after-1"
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: None
+    controller._update_status = lambda: None
+
+    class DummySession:
+        def __init__(self, command: list[str], events: queue.Queue[StreamEvent]) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        gui,
+        "build_logcat_command",
+        lambda serial, filter_state: ["adb", "-s", serial, "logcat"],
+    )
+    monkeypatch.setattr(gui, "LogcatSession", DummySession)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(showwarning=lambda *args: None, showerror=lambda *args: None),
+    )
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert controller.root.after_cancel_calls == ["after-1"]
+    assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+
+
 def test_start_stream_warns_when_adb_is_not_ready(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")

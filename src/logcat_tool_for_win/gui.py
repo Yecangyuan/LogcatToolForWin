@@ -1357,6 +1357,7 @@ class LogcatToolGUI:
                 self._fail_retry_stream(message)
             return
 
+        self._cancel_poll_stream_callback()
         stop_error = self._stop_active_session(manual=True)
         if stop_error:
             self.status.stream_state = "failed"

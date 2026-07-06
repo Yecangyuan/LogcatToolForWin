@@ -834,7 +834,7 @@ def test_start_stream_resets_stale_queue_depth(monkeypatch) -> None:
     assert controller.status.queue_depth == 0
 
 
-def test_refresh_devices_failure_clears_stale_devices_and_selection(monkeypatch) -> None:
+def test_refresh_devices_failure_preserves_stale_devices_and_selection(monkeypatch) -> None:
     controller = make_controller()
     stale_device = make_device("R58M12345")
     stale_label = gui.device_label(stale_device)
@@ -850,10 +850,10 @@ def test_refresh_devices_failure_clears_stale_devices_and_selection(monkeypatch)
 
     gui.LogcatToolGUI.refresh_devices(controller)
 
-    assert controller.devices == []
-    assert controller.device_var.get() == ""
-    assert controller.device_combo.values == ()
-    assert controller.status.active_device_serial == ""
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.device_combo.values == (stale_label,)
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.adb_ready is False
     assert "adb unavailable" in controller.status.last_error
 

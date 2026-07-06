@@ -550,13 +550,24 @@ class LogcatToolGUI:
 
     def _handle_refresh_devices_error(self, exc: Exception) -> None:
         preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
-        self.devices = []
-        self.device_combo["values"] = ()
-        self.device_var.set("")
+        labels = [device_label(device) for device in self.devices]
+        if labels:
+            self.device_combo["values"] = labels
+            if self.device_var.get() not in labels:
+                self.device_var.set(labels[0])
+        else:
+            self.device_combo["values"] = ()
+            self.device_var.set("")
         self.status.adb_ready = False
         self.status.last_error = str(exc)
         if not preserve_stream_target:
-            self.status.active_device_serial = ""
+            if labels:
+                try:
+                    self.status.active_device_serial = self._current_device().serial
+                except ValueError:
+                    self.status.active_device_serial = self.devices[0].serial
+            else:
+                self.status.active_device_serial = ""
         self._update_status()
 
     def refresh_devices(self) -> None:

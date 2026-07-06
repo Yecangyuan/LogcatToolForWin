@@ -1006,16 +1006,34 @@ class LogcatToolGUI:
         target_serial = getattr(self, "reconnect_target_serial", "") or self.status.active_device_serial
         if self.manual_stop or not target_serial:
             return
+        self._run_background_task(
+            "正在重连设备...",
+            list_devices,
+            lambda devices, serial=target_serial: self._handle_retry_stream_refresh_success(serial, devices),
+            self._handle_retry_stream_refresh_error,
+        )
 
-        self.refresh_devices()
-        refresh_error = self.status.last_error.strip()
-        if self.status.adb_ready:
-            for device in self.devices:
-                if device.serial == target_serial and device.state == "device":
-                    self.device_var.set(device_label(device))
-                    self.start_stream()
-                    return
+    def _handle_retry_stream_refresh_success(
+        self,
+        target_serial: str,
+        devices: list[DeviceInfo],
+    ) -> None:
+        if self.manual_stop or self.status.stream_state != "reconnecting":
+            return
+        self._apply_devices(devices)
+        for device in self.devices:
+            if device.serial == target_serial and device.state == "device":
+                self.device_var.set(device_label(device))
+                self.start_stream()
+                return
+        self._fail_retry_stream()
 
+    def _handle_retry_stream_refresh_error(self, exc: Exception) -> None:
+        if self.manual_stop or self.status.stream_state != "reconnecting":
+            return
+        self._fail_retry_stream(str(exc).strip())
+
+    def _fail_retry_stream(self, refresh_error: str = "") -> None:
         self.status.stream_state = "failed"
         if refresh_error:
             self.status.last_error = f"重连设备不可用：{refresh_error}"

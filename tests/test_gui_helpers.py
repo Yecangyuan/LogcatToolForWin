@@ -1497,44 +1497,54 @@ def test_build_highlight_text_tag_avoids_builtin_tag_collisions() -> None:
     assert gui.build_highlight_text_tag("filtered-out") != "filtered-out"
 
 
-def test_retry_stream_uses_preserved_reconnect_target_after_refresh() -> None:
+def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     controller = make_controller()
     target_device = make_device("target-serial")
     other_device = make_device("other-serial")
     started_with: list[str] = []
+    captured: dict[str, object] = {}
     controller.reconnect_target_serial = target_device.serial
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = other_device.serial
 
-    def fake_refresh_devices() -> None:
-        controller.devices = [other_device, target_device]
-        controller.device_var.set(gui.device_label(other_device))
-        controller.status.adb_ready = True
-        controller.status.active_device_serial = other_device.serial
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
 
-    controller.refresh_devices = fake_refresh_devices
+    monkeypatch.setattr(gui, "list_devices", lambda: [other_device, target_device])
+    controller._run_background_task = fake_run_background_task
     controller.start_stream = lambda: started_with.append(controller.device_var.get())
 
     gui.LogcatToolGUI._retry_stream(controller)
+    devices = captured["action"]()
+    captured["on_success"](devices)
 
+    assert captured["message"] == "正在重连设备..."
     assert started_with == [gui.device_label(target_device)]
 
 
 def test_retry_stream_preserves_refresh_failure_reason() -> None:
     controller = make_controller()
+    captured: dict[str, object] = {}
     controller.reconnect_target_serial = "target-serial"
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = "target-serial"
 
-    def fake_refresh_devices() -> None:
-        controller.devices = []
-        controller.status.adb_ready = False
-        controller.status.last_error = "adb unavailable"
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
 
-    controller.refresh_devices = fake_refresh_devices
+    controller._run_background_task = fake_run_background_task
     controller.start_stream = lambda: None
 
     gui.LogcatToolGUI._retry_stream(controller)
+    captured["on_error"](RuntimeError("adb unavailable"))
 
     assert controller.status.stream_state == "failed"
     assert "重连设备不可用" in controller.status.last_error
@@ -1544,20 +1554,24 @@ def test_retry_stream_preserves_refresh_failure_reason() -> None:
 def test_retry_stream_does_not_restart_from_stale_devices_after_refresh_failure() -> None:
     controller = make_controller()
     stale_target = make_device("target-serial")
+    captured: dict[str, object] = {}
     controller.devices = [stale_target]
     controller.reconnect_target_serial = stale_target.serial
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = stale_target.serial
     started: list[str] = []
 
-    def fake_refresh_devices() -> None:
-        controller.status.adb_ready = False
-        controller.status.last_error = "adb unavailable"
+    def fake_run_background_task(message, action, on_success, on_error) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
 
-    controller.refresh_devices = fake_refresh_devices
+    controller._run_background_task = fake_run_background_task
     controller.start_stream = lambda: started.append("started")
 
     gui.LogcatToolGUI._retry_stream(controller)
+    captured["on_error"](RuntimeError("adb unavailable"))
 
     assert started == []
     assert controller.status.stream_state == "failed"

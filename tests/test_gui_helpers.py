@@ -975,6 +975,38 @@ def test_start_stream_clears_retry_state_when_reconnect_launch_fails(monkeypatch
     assert controller.status.last_error == "launch failed"
 
 
+def test_start_stream_clears_retry_state_when_reconnect_stop_fails(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    errors: list[tuple[str, str]] = []
+
+    controller.status.adb_ready = True
+    controller.status.stream_state = "reconnecting"
+    controller.status.reconnect_attempt = 2
+    controller.status.active_device_serial = selected_device.serial
+    controller.reconnect_target_serial = selected_device.serial
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: "stop failed"
+    controller._update_status = lambda: None
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert errors == [("停止失败", "stop failed")]
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == "stop failed"
+
+
 def test_refresh_devices_failure_preserves_stale_devices_and_selection(monkeypatch) -> None:
     controller = make_controller()
     stale_device = make_device("R58M12345")

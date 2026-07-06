@@ -915,6 +915,8 @@ class LogcatToolGUI:
         stop_error = self._stop_active_session(manual=True)
         if stop_error:
             self.status.stream_state = "failed"
+            self.status.reconnect_attempt = 0
+            self.reconnect_target_serial = ""
             self.status.last_error = stop_error
             messagebox.showerror("停止失败", stop_error)
             self._update_status()

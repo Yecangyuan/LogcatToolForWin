@@ -1094,12 +1094,13 @@ class LogcatToolGUI:
 
     def _render_visible(self) -> None:
         rule_map = {rule.name: rule for rule in self.highlight_rules}
+        tag_map = self._build_highlight_tag_map(rule_map)
         self.text.configure(state=tk.NORMAL)
         self.text.delete("1.0", tk.END)
-        self._configure_highlight_tags(rule_map, self.visible_lines)
+        self._configure_highlight_tags(rule_map, tag_map, self.visible_lines)
 
         for entry in self.visible_lines:
-            self._insert_visible_entry(entry, rule_map)
+            self._insert_visible_entry(entry, tag_map)
 
         self.text.configure(state=tk.DISABLED)
         self._update_summary()
@@ -1109,18 +1110,26 @@ class LogcatToolGUI:
     def _append_visible_entries(self, entries: list[LogEntry]) -> None:
         if entries:
             rule_map = {rule.name: rule for rule in self.highlight_rules}
+            tag_map = self._build_highlight_tag_map(rule_map)
             self.text.configure(state=tk.NORMAL)
-            self._configure_highlight_tags(rule_map, entries)
+            self._configure_highlight_tags(rule_map, tag_map, entries)
             for entry in entries:
-                self._insert_visible_entry(entry, rule_map)
+                self._insert_visible_entry(entry, tag_map)
             self.text.configure(state=tk.DISABLED)
             if self.auto_scroll_var.get():
                 self.text.see(tk.END)
         self._update_summary()
 
+    def _build_highlight_tag_map(
+        self,
+        rule_map: dict[str, HighlightRule],
+    ) -> dict[str, str]:
+        return {rule_name: build_highlight_text_tag(rule_name) for rule_name in rule_map}
+
     def _configure_highlight_tags(
         self,
         rule_map: dict[str, HighlightRule],
+        tag_map: dict[str, str],
         entries: Iterable[LogEntry],
     ) -> None:
         used_rule_names = {
@@ -1131,7 +1140,7 @@ class LogcatToolGUI:
         }
         for rule_name in sorted(used_rule_names):
             rule = rule_map[rule_name]
-            tag_name = build_highlight_text_tag(rule_name)
+            tag_name = tag_map[rule_name]
             style = (rule.foreground, rule.background or "")
             if self._configured_highlight_styles.get(tag_name) == style:
                 continue
@@ -1142,9 +1151,9 @@ class LogcatToolGUI:
             )
             self._configured_highlight_styles[tag_name] = style
 
-    def _insert_visible_entry(self, entry: LogEntry, rule_map: dict[str, HighlightRule]) -> None:
+    def _insert_visible_entry(self, entry: LogEntry, tag_map: dict[str, str]) -> None:
         highlight_names = (
-            tuple(rule_name for rule_name in entry.highlight_keys if rule_name in rule_map)
+            tuple(rule_name for rule_name in entry.highlight_keys if rule_name in tag_map)
             if entry.highlight_keys
             else ()
         )
@@ -1160,7 +1169,7 @@ class LogcatToolGUI:
             self.text.tag_add("filtered-out", line_start, line_end)
 
         for rule_name in highlight_names:
-            tag_name = build_highlight_text_tag(rule_name)
+            tag_name = tag_map[rule_name]
             self.text.tag_add(tag_name, line_start, line_end)
 
     def _sync_selected_device(self) -> None:

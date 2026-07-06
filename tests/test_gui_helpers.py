@@ -724,6 +724,40 @@ def test_handle_auto_scroll_trace_scrolls_without_full_refresh() -> None:
     assert controller.text.see_calls == [gui.tk.END]
 
 
+def test_handle_filter_trace_debounces_full_refresh() -> None:
+    controller = make_controller()
+    refreshes: list[str] = []
+    controller._refresh_visible_entries = lambda: refreshes.append("refresh")
+
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+
+    assert refreshes == []
+    assert controller.root.after_calls[0][0] == gui.FILTER_REFRESH_DELAY_MS
+
+    _delay, callback = controller.root.after_calls[0]
+    callback()
+
+    assert refreshes == ["refresh"]
+
+
+def test_handle_filter_trace_ignores_stale_debounced_callbacks() -> None:
+    controller = make_controller()
+    refreshes: list[str] = []
+    controller._refresh_visible_entries = lambda: refreshes.append("refresh")
+
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+
+    assert len(controller.root.after_calls) == 2
+
+    _first_delay, first_callback = controller.root.after_calls[0]
+    _second_delay, second_callback = controller.root.after_calls[1]
+    first_callback()
+    second_callback()
+
+    assert refreshes == ["refresh"]
+
+
 def test_load_named_preset_batches_filter_refreshes() -> None:
     controller = make_controller()
     refreshes: list[str] = []

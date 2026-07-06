@@ -62,6 +62,7 @@ from logcat_tool_for_win.presets import load_presets, load_state, save_preset, s
 MAX_RECONNECT_ATTEMPTS = 3
 RECONNECT_DELAY_MS = 2_000
 MAX_EVENTS_PER_TICK = 500
+FILTER_REFRESH_DELAY_MS = 120
 MAX_RECENT_TARGETS = 8
 DEVICE_SYNC_TASK_KEY = "device-sync"
 T = TypeVar("T")
@@ -486,7 +487,7 @@ class LogcatToolGUI:
     def _handle_filter_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
             return
-        self._refresh_visible_entries()
+        self._schedule_filter_refresh()
 
     def _handle_highlight_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
@@ -499,6 +500,21 @@ class LogcatToolGUI:
         self.filters = self._current_filters()
         if self.auto_scroll_var.get():
             self.text.see(tk.END)
+
+    def _schedule_filter_refresh(self) -> None:
+        version = getattr(self, "_filter_refresh_version", 0) + 1
+        self._filter_refresh_version = version
+        self._schedule_ui_callback(
+            FILTER_REFRESH_DELAY_MS,
+            lambda expected_version=version: self._run_scheduled_filter_refresh(expected_version),
+        )
+
+    def _run_scheduled_filter_refresh(self, expected_version: int) -> None:
+        if self._filter_refresh_suspended:
+            return
+        if getattr(self, "_filter_refresh_version", 0) != expected_version:
+            return
+        self._refresh_visible_entries()
 
     def _run_background_task(
         self,

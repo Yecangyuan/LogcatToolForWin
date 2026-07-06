@@ -22,7 +22,7 @@ def _lower_pattern(pattern: str) -> str:
 
 def match_highlight_rules(entry: LogEntry, rules: list[HighlightRule]) -> tuple[str, ...]:
     matches: list[str] = []
-    lowered_raw_line: Optional[str] = None
+    lowered_raw_line: Optional[str] = entry.lowered_raw_line or None
     for rule in rules:
         if not rule.pattern:
             continue
@@ -32,6 +32,7 @@ def match_highlight_rules(entry: LogEntry, rules: list[HighlightRule]) -> tuple[
         else:
             if lowered_raw_line is None:
                 lowered_raw_line = entry.raw_line.lower()
+                entry.lowered_raw_line = lowered_raw_line
             source = lowered_raw_line
             pattern = _lower_pattern(rule.pattern)
         if pattern in source:

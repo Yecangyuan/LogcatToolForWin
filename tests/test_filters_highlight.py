@@ -171,6 +171,25 @@ def test_match_highlight_rules_reuses_lowered_insensitive_pattern_across_entries
     assert pattern.lower_calls == 1
 
 
+def test_match_highlight_rules_reuses_lowered_raw_line_across_repeated_matches() -> None:
+    raw_line = LowerCountingStr("ANR detected and crash happened")
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="W",
+        tag="ActivityManager",
+        message="ANR detected",
+        raw_line=raw_line,
+    )
+    rules = [
+        HighlightRule(name="ANR", pattern="anr", foreground="#ffcc00"),
+        HighlightRule(name="crash", pattern="CRASH", foreground="#ff6b6b"),
+    ]
+
+    assert match_highlight_rules(entry, rules) == ("ANR", "crash")
+    assert match_highlight_rules(entry, rules) == ("ANR", "crash")
+    assert raw_line.lower_calls == 1
+
+
 def test_default_level_colors_include_error_red() -> None:
     assert DEFAULT_LEVEL_COLORS["E"] == "#ff6b6b"
 

@@ -42,6 +42,7 @@ class LogEntry:
     raw_line: str
     matches_filters: bool = True
     highlight_keys: tuple[str, ...] = ()
+    lowered_raw_line: str = ""
 
 
 @dataclass

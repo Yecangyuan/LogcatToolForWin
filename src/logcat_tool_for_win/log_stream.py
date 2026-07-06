@@ -41,10 +41,12 @@ class LogcatSession:
         command: list[str],
         events: queue.Queue[StreamEvent],
         popen_factory: Callable[..., subprocess.Popen[str]] = subprocess.Popen,
+        stderr_join_timeout: float = 2.0,
     ) -> None:
         self.command = command
         self.events = events
         self.popen_factory = popen_factory
+        self.stderr_join_timeout = stderr_join_timeout
         self.process: Optional[subprocess.Popen[str]] = None
         self.worker: Optional[threading.Thread] = None
 
@@ -89,8 +91,10 @@ class LogcatSession:
         except Exception as exc:
             pump_error = str(exc) or exc.__class__.__name__
         finally:
-            stderr_thread.join()
+            stderr_thread.join(timeout=self.stderr_join_timeout)
             stderr_messages = [message for message in stderr_text if message]
+            if stderr_thread.is_alive():
+                stderr_messages.append("stderr read timed out")
             if pump_error:
                 stderr_messages.append(pump_error)
             if stderr_messages:

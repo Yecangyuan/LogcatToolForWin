@@ -149,6 +149,28 @@ class StderrErrorPopen:
         return self.returncode
 
 
+class BlockingStderr:
+    def __init__(self) -> None:
+        self.release = threading.Event()
+
+    def read(self) -> str:
+        self.release.wait(timeout=5)
+        return ""
+
+
+class StuckStderrPopen:
+    def __init__(self) -> None:
+        self.stdout = io.StringIO("")
+        self.stderr = BlockingStderr()
+        self.returncode = 0
+
+    def terminate(self) -> None:
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
 def test_parse_threadtime_line_extracts_fields() -> None:
     entry = parse_threadtime_line("06-18 12:00:00.000  1234  1235 E MyApp: crash")
     assert entry.level == "E"
@@ -310,6 +332,30 @@ def test_session_emits_stderr_event_when_stderr_read_fails() -> None:
     assert received == [
         ("started", ""),
         ("stderr", "stderr read failed"),
+        ("stopped", ""),
+    ]
+
+
+def test_session_emits_stopped_when_stderr_read_hangs() -> None:
+    events: queue.Queue = queue.Queue()
+    session = LogcatSession(
+        ["adb", "logcat"],
+        events,
+        lambda *args, **kwargs: StuckStderrPopen(),
+        stderr_join_timeout=0.01,
+    )
+
+    session.start()
+    session.join()
+
+    received = []
+    while not events.empty():
+        event = events.get()
+        received.append((event.kind, event.message))
+
+    assert received == [
+        ("started", ""),
+        ("stderr", "stderr read timed out"),
         ("stopped", ""),
     ]
 

@@ -1338,7 +1338,61 @@ def test_connect_tcp_prepares_selected_usb_device_before_connecting_target(monke
     assert controller.status.active_device_serial == tcp_device.serial
 
 
-def test_connect_tcp_does_not_fall_back_to_selected_usb_device_after_direct_connect_failure(
+def test_connect_tcp_auto_enables_selected_usb_device_after_direct_connect_failure(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    tcp_device = make_device("192.168.1.111:5555")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.connect_var.set(tcp_device.serial)
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    def fake_enable_tcpip(serial: str, port: int) -> str:
+        calls.append(("tcpip", (serial, port)))
+        return "restarting in TCP mode port: 5555\n"
+
+    connect_attempts = 0
+
+    def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+        nonlocal connect_attempts
+        connect_attempts += 1
+        calls.append(("connect", (target, attempts, delay_seconds)))
+        if connect_attempts == 1:
+            raise ADBCommandError("connection refused")
+        return f"connected to {target}\n"
+
+    monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
+    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.111")
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(gui, "list_devices", lambda: [usb_device, tcp_device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert calls == [
+        ("connect", ("192.168.1.111:5555", 3, 1.0)),
+        ("tcpip", ("USB123", 5555)),
+        ("connect", ("192.168.1.111:5555", 3, 1.0)),
+    ]
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == tcp_device.serial
+    assert controller.status.last_error == (
+        "首次直连失败，已自动为 USB123 开启无线 ADB；connected to 192.168.1.111:5555"
+    )
+
+
+def test_connect_tcp_does_not_fall_back_to_selected_usb_device_when_target_ip_mismatches(
     monkeypatch,
 ) -> None:
     controller = make_controller()
@@ -1365,6 +1419,7 @@ def test_connect_tcp_does_not_fall_back_to_selected_usb_device_after_direct_conn
         raise ADBCommandError("connection refused")
 
     monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
+    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.222")
     monkeypatch.setattr(gui, "connect_device", fake_connect_device)
     monkeypatch.setattr(gui, "list_devices", lambda: [usb_device, tcp_device])
     controller._run_background_task = fake_run_background_task
@@ -1377,7 +1432,7 @@ def test_connect_tcp_does_not_fall_back_to_selected_usb_device_after_direct_conn
     assert controller.device_var.get() == gui.device_label(usb_device)
 
 
-def test_connect_tcp_does_not_fall_back_to_only_ready_usb_device_without_manual_selection(
+def test_connect_tcp_does_not_fall_back_without_manual_usb_selection(
     monkeypatch,
 ) -> None:
     controller = make_controller()
@@ -1476,8 +1531,9 @@ def test_handle_connect_tcp_error_explains_usb_to_wireless_next_step(monkeypatch
         (
             "连接失败",
             "无法连接 192.168.1.111:5555。原始错误：connection refused\n\n"
-            "当前“连接”按钮只会直连目标地址。"
-            "如果这台手机还没开启无线 ADB，请先用 USB 连上后点“USB 开启无线”。",
+            "已先尝试直连目标地址。"
+            "如果当前选中的是已授权的 USB 设备，程序也会自动尝试为它开启无线 ADB 后再重连；"
+            "也可以手动点“USB 开启无线”。",
         )
     ]
     assert controller.status.last_error == errors[0][1]

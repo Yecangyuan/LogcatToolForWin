@@ -19,6 +19,7 @@ else:
     TK_IMPORT_ERROR = None
 
 from logcat_tool_for_win.adb import (
+    ADBCommandError,
     DEFAULT_TCP_PORT,
     build_logcat_command,
     clear_logcat,
@@ -722,8 +723,10 @@ class LogcatToolGUI:
             self.connect_var.set(target)
 
         existing_devices = list(self.devices)
+        selected_usb_device = self._selected_usb_device_for_tcp_connect()
+
         def action() -> tuple[str, str, list[DeviceInfo]]:
-            message = self._connect_tcp_target(target).strip()
+            message = self._connect_tcp_target_with_usb_fallback(target, selected_usb_device).strip()
             message = message or f"已连接 {target}"
             try:
                 devices = list_devices()
@@ -832,15 +835,77 @@ class LogcatToolGUI:
         self.status.last_error = message
         self._update_status()
 
+    def _selected_usb_device_for_tcp_connect(self) -> Optional[DeviceInfo]:
+        try:
+            device = self._current_device()
+        except ValueError:
+            return None
+        if device.transport != "usb" or device.state != "device":
+            return None
+        return device
+
     def _connect_tcp_target(self, target: str) -> str:
         return connect_device(target, attempts=3, delay_seconds=1.0)
+
+    def _connect_tcp_target_with_usb_fallback(
+        self,
+        target: str,
+        selected_usb_device: Optional[DeviceInfo],
+    ) -> str:
+        direct_error: Optional[ADBCommandError] = None
+        try:
+            return self._connect_tcp_target(target)
+        except ADBCommandError as exc:
+            direct_error = exc
+            if selected_usb_device is None or not self._usb_device_matches_tcp_target(
+                selected_usb_device,
+                target,
+            ):
+                raise
+
+        port = extract_tcp_port(target, DEFAULT_TCP_PORT)
+        try:
+            enable_tcpip(selected_usb_device.serial, port)
+            retry_message = self._connect_tcp_target(target).strip()
+        except Exception as exc:
+            raise ADBCommandError(
+                self._format_connect_tcp_retry_error(selected_usb_device, direct_error, exc)
+            ) from exc
+        retry_message = retry_message or f"已连接 {target}"
+        return (
+            f"首次直连失败，已自动为 {selected_usb_device.serial} 开启无线 ADB；"
+            f"{retry_message}"
+        )
+
+    def _usb_device_matches_tcp_target(self, device: DeviceInfo, target: str) -> bool:
+        target_host = target.rsplit(":", 1)[0]
+        try:
+            route_ip = get_device_route_ip(device.serial).strip()
+        except Exception:
+            return True
+        return not route_ip or route_ip == target_host
+
+    def _format_connect_tcp_retry_error(
+        self,
+        selected_usb_device: DeviceInfo,
+        direct_error: Exception,
+        retry_error: Exception,
+    ) -> str:
+        direct_message = str(direct_error).strip() or "直连失败。"
+        retry_message = str(retry_error).strip() or "自动开启无线 ADB 后重连失败。"
+        return (
+            f"{direct_message}\n\n"
+            f"已尝试为当前 USB 设备 {selected_usb_device.serial} 自动开启无线 ADB 后再连接，"
+            f"但仍失败：{retry_message}"
+        )
 
     def _format_connect_tcp_error_message(self, exc: Exception) -> str:
         message = str(exc).strip() or "连接失败。"
         return (
             f"{message}\n\n"
-            "当前“连接”按钮只会直连目标地址。"
-            f"如果这台手机还没开启无线 ADB，请先用 USB 连上后点“{WIRELESS_ADB_BUTTON_LABEL}”。"
+            "已先尝试直连目标地址。"
+            "如果当前选中的是已授权的 USB 设备，程序也会自动尝试为它开启无线 ADB 后再重连；"
+            f"也可以手动点“{WIRELESS_ADB_BUTTON_LABEL}”。"
         )
 
     def _format_wireless_adb_error_message(self, exc: Exception) -> str:

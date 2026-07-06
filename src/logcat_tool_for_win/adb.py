@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,12 @@ TCP_CONNECT_FAILURE_HINT = (
     "请确认手机和电脑在同一局域网；手机已开启 USB 调试并允许授权；"
     "如果还没有通过 USB 开启无线 ADB，请先用 USB 连上后点“USB 开启无线”；"
     "并确认端口未被防火墙拦截。"
+)
+DEVICE_IP_DISCOVERY_COMMANDS = (
+    (["shell", "ip", "route"], "route"),
+    (["shell", "ip", "-f", "inet", "addr", "show", "wlan0"], "ipv4"),
+    (["shell", "ifconfig", "wlan0"], "ipv4"),
+    (["shell", "getprop", "dhcp.wlan0.ipaddress"], "ipv4"),
 )
 
 
@@ -247,6 +254,17 @@ def parse_route_source_ip(output: str) -> str:
     return fallback_address
 
 
+def _extract_first_non_loopback_ipv4(output: str) -> str:
+    for candidate in re.findall(r"(?:\d{1,3}\.){3}\d{1,3}", output):
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        if address.version == 4 and not address.is_loopback:
+            return str(address)
+    return ""
+
+
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
     _suppress_windows_error_dialogs()
     adb_path = resolve_adb_path()
@@ -316,8 +334,18 @@ def enable_tcpip(serial: str, port: int = DEFAULT_TCP_PORT) -> str:
 
 
 def get_device_route_ip(serial: str) -> str:
-    result = run_adb(["-s", serial, "shell", "ip", "route"], timeout=5.0)
-    return parse_route_source_ip(result.stdout)
+    for command, parser_kind in DEVICE_IP_DISCOVERY_COMMANDS:
+        try:
+            result = run_adb(["-s", serial, *command], timeout=5.0)
+        except ADBCommandError:
+            continue
+        if parser_kind == "route":
+            address = parse_route_source_ip(result.stdout)
+        else:
+            address = _extract_first_non_loopback_ipv4(result.stdout)
+        if address:
+            return address
+    return ""
 
 
 def restart_server() -> None:

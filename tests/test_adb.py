@@ -435,6 +435,84 @@ def test_get_device_route_ip_parses_adb_shell_ip_route(
     assert captured["timeout"] == 5.0
 
 
+def test_get_device_route_ip_falls_back_to_ip_addr_show_when_route_has_no_src(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    responses = {
+        ("-s", "USB123", "shell", "ip", "route"): subprocess.CompletedProcess(
+            args=["adb", "-s", "USB123", "shell", "ip", "route"],
+            returncode=0,
+            stdout="default via 192.168.1.1 dev wlan0 proto static\n",
+            stderr="",
+        ),
+        ("-s", "USB123", "shell", "ip", "-f", "inet", "addr", "show", "wlan0"): subprocess.CompletedProcess(
+            args=["adb", "-s", "USB123", "shell", "ip", "-f", "inet", "addr", "show", "wlan0"],
+            returncode=0,
+            stdout="inet 192.168.1.111/24 brd 192.168.1.255 scope global wlan0\n",
+            stderr="",
+        ),
+    }
+
+    def fake_run_adb(args: list[str], timeout: float = 10.0):
+        calls.append(args)
+        return responses[tuple(args)]
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", fake_run_adb)
+
+    assert get_device_route_ip("USB123") == "192.168.1.111"
+    assert calls == [
+        ["-s", "USB123", "shell", "ip", "route"],
+        ["-s", "USB123", "shell", "ip", "-f", "inet", "addr", "show", "wlan0"],
+    ]
+
+
+def test_get_device_route_ip_falls_back_to_ifconfig_and_getprop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    responses = {
+        ("-s", "USB123", "shell", "ip", "route"): subprocess.CompletedProcess(
+            args=["adb", "-s", "USB123", "shell", "ip", "route"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        ),
+        ("-s", "USB123", "shell", "ip", "-f", "inet", "addr", "show", "wlan0"): subprocess.CompletedProcess(
+            args=["adb", "-s", "USB123", "shell", "ip", "-f", "inet", "addr", "show", "wlan0"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        ),
+        ("-s", "USB123", "shell", "ifconfig", "wlan0"): subprocess.CompletedProcess(
+            args=["adb", "-s", "USB123", "shell", "ifconfig", "wlan0"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        ),
+        ("-s", "USB123", "shell", "getprop", "dhcp.wlan0.ipaddress"): subprocess.CompletedProcess(
+            args=["adb", "-s", "USB123", "shell", "getprop", "dhcp.wlan0.ipaddress"],
+            returncode=0,
+            stdout="192.168.1.111\n",
+            stderr="",
+        ),
+    }
+
+    def fake_run_adb(args: list[str], timeout: float = 10.0):
+        calls.append(args)
+        return responses[tuple(args)]
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", fake_run_adb)
+
+    assert get_device_route_ip("USB123") == "192.168.1.111"
+    assert calls == [
+        ["-s", "USB123", "shell", "ip", "route"],
+        ["-s", "USB123", "shell", "ip", "-f", "inet", "addr", "show", "wlan0"],
+        ["-s", "USB123", "shell", "ifconfig", "wlan0"],
+        ["-s", "USB123", "shell", "getprop", "dhcp.wlan0.ipaddress"],
+    ]
+
+
 def test_run_adb_raises_adb_command_error_on_non_zero_exit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

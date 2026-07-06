@@ -1531,6 +1531,66 @@ def test_connect_tcp_auto_enables_selected_usb_device_after_direct_connect_failu
     )
 
 
+def test_connect_tcp_retargets_after_tcpip_reveals_updated_usb_ip(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    tcp_device = make_device("192.168.1.222:5555")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.connect_var.set("192.168.1.111:5555")
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+    route_ip_results = iter(["", "192.168.1.222"])
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    def fake_enable_tcpip(serial: str, port: int) -> str:
+        calls.append(("tcpip", (serial, port)))
+        return "restarting in TCP mode port: 5555\n"
+
+    def fake_get_device_route_ip(serial: str) -> str:
+        calls.append(("route_ip", serial))
+        return next(route_ip_results)
+
+    def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+        calls.append(("connect", (target, attempts, delay_seconds)))
+        if target == "192.168.1.111:5555":
+            raise ADBCommandError("connection refused")
+        return f"connected to {target}\n"
+
+    monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
+    monkeypatch.setattr(gui, "get_device_route_ip", fake_get_device_route_ip)
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(gui, "list_devices", lambda: [usb_device, tcp_device])
+    monkeypatch.setattr(gui.time, "sleep", lambda _seconds: None)
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert calls == [
+        ("connect", ("192.168.1.111:5555", 3, 1.0)),
+        ("route_ip", "USB123"),
+        ("tcpip", ("USB123", 5555)),
+        ("route_ip", "USB123"),
+        ("connect", ("192.168.1.222:5555", 3, 1.0)),
+    ]
+    assert controller.connect_var.get() == "192.168.1.222:5555"
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == tcp_device.serial
+    assert controller.status.last_error == (
+        "首次直连 192.168.1.111:5555 失败，检测到 USB123 当前 IP 已变为 "
+        "192.168.1.222，已自动改连 192.168.1.222:5555；connected to 192.168.1.222:5555"
+    )
+
+
 def test_connect_tcp_retargets_to_selected_usb_device_when_target_ip_mismatches(
     monkeypatch,
 ) -> None:

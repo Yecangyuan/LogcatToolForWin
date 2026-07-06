@@ -986,6 +986,18 @@ class LogcatToolGUI:
         port = extract_tcp_port(target, DEFAULT_TCP_PORT)
         try:
             enable_tcpip(selected_usb_device.serial, port)
+            route_ip = self._route_ip_for_serial_with_retries(
+                selected_usb_device.serial,
+                attempts=WIRELESS_ROUTE_IP_RETRY_ATTEMPTS,
+                delay_seconds=WIRELESS_ROUTE_IP_RETRY_DELAY_SECONDS,
+            )
+            if route_ip and not self._usb_route_ip_matches_tcp_target(route_ip, target):
+                return self._retry_tcp_target_with_updated_usb_ip_after_enable(
+                    target,
+                    route_ip,
+                    selected_usb_device,
+                    direct_error,
+                )
             retry_message = self._connect_tcp_target(target).strip()
         except Exception as exc:
             raise ADBCommandError(
@@ -1005,6 +1017,34 @@ class LogcatToolGUI:
         retry_target = f"{route_ip}:{port}"
         try:
             enable_tcpip(selected_usb_device.serial, port)
+            retry_message = self._connect_tcp_target(retry_target).strip()
+        except Exception as exc:
+            raise ADBCommandError(
+                self._format_connect_tcp_retarget_retry_error(
+                    selected_usb_device,
+                    original_target,
+                    retry_target,
+                    direct_error,
+                    exc,
+                )
+            ) from exc
+        retry_message = retry_message or f"已连接 {retry_target}"
+        return (
+            retry_target,
+            f"首次直连 {original_target} 失败，检测到 {selected_usb_device.serial} 当前 IP 已变为 "
+            f"{route_ip}，已自动改连 {retry_target}；{retry_message}",
+        )
+
+    def _retry_tcp_target_with_updated_usb_ip_after_enable(
+        self,
+        original_target: str,
+        route_ip: str,
+        selected_usb_device: DeviceInfo,
+        direct_error: Exception,
+    ) -> tuple[str, str]:
+        port = extract_tcp_port(original_target, DEFAULT_TCP_PORT)
+        retry_target = f"{route_ip}:{port}"
+        try:
             retry_message = self._connect_tcp_target(retry_target).strip()
         except Exception as exc:
             raise ADBCommandError(

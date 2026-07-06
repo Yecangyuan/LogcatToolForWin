@@ -1496,6 +1496,9 @@ class LogcatToolGUI:
                 self.device_var.set(device_label(device))
                 self.start_stream()
                 return
+        if ":" in target_serial:
+            self._retry_tcp_stream_target(target_serial)
+            return
         self._fail_retry_stream()
 
     def _handle_retry_stream_refresh_error(self, exc: Exception) -> None:
@@ -1503,6 +1506,21 @@ class LogcatToolGUI:
             return
         self._handle_refresh_devices_error(exc)
         self._fail_retry_stream(str(exc).strip())
+
+    def _retry_tcp_stream_target(self, target_serial: str) -> None:
+        if self.manual_stop or self.status.stream_state != "reconnecting":
+            return
+        self._run_background_task(
+            "正在重连设备...",
+            lambda: self._reconnect_tcp_stream_target(target_serial),
+            lambda devices, serial=target_serial: self._handle_retry_stream_refresh_success(serial, devices),
+            self._handle_retry_stream_refresh_error,
+            task_key=DEVICE_SYNC_TASK_KEY,
+        )
+
+    def _reconnect_tcp_stream_target(self, target_serial: str) -> list[DeviceInfo]:
+        connect_device(target_serial, attempts=2, delay_seconds=1.0)
+        return list_devices()
 
     def _fail_retry_stream(self, refresh_error: str = "") -> None:
         self.status.stream_state = "failed"

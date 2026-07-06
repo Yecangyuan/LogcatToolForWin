@@ -2290,6 +2290,103 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
     assert started_with == [gui.device_label(target_device)]
 
 
+def test_retry_stream_reconnects_missing_tcp_target_before_failing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = make_controller()
+    target_device = make_device("192.168.1.111:5555")
+    other_device = make_device("USB123")
+    started_with: list[str] = []
+    background_calls: list[dict[str, object]] = []
+    connect_calls: list[tuple[str, float, float]] = []
+
+    controller.reconnect_target_serial = target_device.serial
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = target_device.serial
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        background_calls.append(
+            {
+                "message": message,
+                "action": action,
+                "on_success": on_success,
+                "on_error": on_error,
+                "task_key": task_key,
+            }
+        )
+
+    def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+        connect_calls.append((target, attempts, delay_seconds))
+        return f"connected to {target}\n"
+
+    lists = iter([[other_device], [other_device, target_device]])
+    monkeypatch.setattr(gui, "list_devices", lambda: next(lists))
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    controller._run_background_task = fake_run_background_task
+    controller.start_stream = lambda: started_with.append(controller.device_var.get())
+
+    gui.LogcatToolGUI._retry_stream(controller)
+    assert len(background_calls) == 1
+
+    first_call = background_calls[0]
+    devices = first_call["action"]()
+    first_call["on_success"](devices)
+
+    assert len(background_calls) == 2
+    second_call = background_calls[1]
+    devices = second_call["action"]()
+    second_call["on_success"](devices)
+
+    assert connect_calls == [("192.168.1.111:5555", 2, 1.0)]
+    assert started_with == [gui.device_label(target_device)]
+
+
+def test_retry_stream_fails_when_tcp_target_reconnect_still_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = make_controller()
+    target_serial = "192.168.1.111:5555"
+    other_device = make_device("USB123")
+    background_calls: list[dict[str, object]] = []
+
+    controller.reconnect_target_serial = target_serial
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = target_serial
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        background_calls.append(
+            {
+                "message": message,
+                "action": action,
+                "on_success": on_success,
+                "on_error": on_error,
+            }
+        )
+
+    monkeypatch.setattr(gui, "list_devices", lambda: [other_device])
+    monkeypatch.setattr(gui, "connect_device", lambda *args, **kwargs: (_ for _ in ()).throw(ADBCommandError("timeout")))
+    controller._run_background_task = fake_run_background_task
+    controller.start_stream = lambda: (_ for _ in ()).throw(AssertionError("should not start stream"))
+
+    gui.LogcatToolGUI._retry_stream(controller)
+    assert len(background_calls) == 1
+
+    first_call = background_calls[0]
+    devices = first_call["action"]()
+    first_call["on_success"](devices)
+
+    assert len(background_calls) == 2
+    second_call = background_calls[1]
+    with pytest.raises(ADBCommandError, match="timeout"):
+        second_call["action"]()
+    second_call["on_error"](ADBCommandError("timeout"))
+
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == "重连设备不可用：timeout"
+
+
 def test_retry_stream_preserves_refresh_failure_reason() -> None:
     controller = make_controller()
     captured: dict[str, object] = {}

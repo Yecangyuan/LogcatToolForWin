@@ -57,6 +57,7 @@ class LogEntry:
 @dataclass
 class AppStatus:
     adb_ready: bool = False
+    adb_path: str = ""
     active_device_serial: str = ""
     stream_state: str = "idle"
     queue_depth: int = 0

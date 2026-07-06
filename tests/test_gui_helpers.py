@@ -34,12 +34,14 @@ def test_format_status_text_includes_reconnect_attempt() -> None:
         queue_depth=9,
         last_error="device offline",
         reconnect_attempt=2,
+        adb_path="C:/Android/platform-tools/adb.exe",
     )
 
     text = gui.format_status_text(status)
 
     assert "R58M12345" in text
     assert "第 2 次重连" in text
+    assert "C:/Android/platform-tools/adb.exe" in text
 
 
 def test_build_highlight_rules_creates_rules_from_csv_text() -> None:
@@ -1286,6 +1288,7 @@ def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
         captured["on_error"] = on_error
 
     monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path("C:/platform-tools/adb.exe"))
     controller._run_background_task = fake_run_background_task
 
     gui.LogcatToolGUI.refresh_devices_async(controller)
@@ -1296,6 +1299,7 @@ def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
 
     assert controller.devices == [device]
     assert controller.device_var.get() == gui.device_label(device)
+    assert controller.status.adb_path == "C:/platform-tools/adb.exe"
 
 
 def test_apply_devices_aligns_selection_to_active_stream_target() -> None:
@@ -1973,6 +1977,7 @@ def test_configure_adb_path_switches_to_selected_exe_and_refreshes_devices(monke
 
     assert calls == [("stop", None), ("set", selected_path)]
     assert controller.devices == [device]
+    assert controller.status.adb_path == selected_path
     assert controller.status.last_error == f"已切换 ADB：{selected_path}"
 
 

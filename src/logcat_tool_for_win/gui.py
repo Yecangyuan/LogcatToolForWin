@@ -116,6 +116,7 @@ def build_highlight_text_tag(rule_name: str) -> str:
 def format_status_text(status: AppStatus) -> str:
     base = (
         f"ADB：{'就绪' if status.adb_ready else '不可用'} | "
+        f"ADB路径：{status.adb_path or '-'} | "
         f"设备：{status.active_device_serial or '-'} | "
         f"状态：{format_stream_state(status.stream_state)} | "
         f"队列：{status.queue_depth}"
@@ -166,6 +167,7 @@ class LogcatToolGUI:
         )
         self.named_presets = load_presets(self.presets_file)
         self.status = AppStatus()
+        self.status.adb_path = str(resolve_adb_path())
         self.manual_stop = True
         self.reconnect_target_serial = ""
         self.recent_targets = recent_targets[:MAX_RECENT_TARGETS]
@@ -691,6 +693,7 @@ class LogcatToolGUI:
         return preserved_devices, stale_target
 
     def _apply_devices(self, devices: list[DeviceInfo]) -> None:
+        self.status.adb_path = str(resolve_adb_path())
         current_label = self.device_var.get()
         preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
         stream_target: Optional[DeviceInfo] = None
@@ -714,6 +717,7 @@ class LogcatToolGUI:
         self._update_status()
 
     def _handle_refresh_devices_error(self, exc: Exception) -> None:
+        self.status.adb_path = str(resolve_adb_path())
         preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
         if preserve_stream_target:
             self.devices, stream_target = self._preserve_stream_target_device(self.devices)
@@ -1204,10 +1208,12 @@ class LogcatToolGUI:
     def _handle_configure_adb_path_success(self, result: tuple[str, list[DeviceInfo]]) -> None:
         message, devices = result
         self._apply_devices(devices)
+        self.status.adb_path = str(resolve_adb_path())
         self.status.last_error = message
         self._update_status()
 
     def _handle_configure_adb_path_error(self, exc: Exception) -> None:
+        self.status.adb_path = str(resolve_adb_path())
         messagebox.showerror("ADB 路径切换失败", str(exc))
         self.status.last_error = str(exc)
         self._update_status()

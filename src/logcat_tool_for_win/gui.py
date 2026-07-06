@@ -1650,6 +1650,7 @@ class LogcatToolGUI:
             return
         self._handle_refresh_devices_error(exc)
         self._fail_retry_stream(str(exc).strip())
+        self._show_adb_launch_recovery_prompt(str(exc))
 
     def _retry_tcp_stream_target(self, target_serial: str) -> None:
         if self.manual_stop or self.status.stream_state != "reconnecting":

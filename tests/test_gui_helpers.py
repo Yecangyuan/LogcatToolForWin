@@ -3003,6 +3003,64 @@ def test_retry_stream_preserves_refresh_failure_reason() -> None:
     assert "adb unavailable" in controller.status.last_error
 
 
+def test_retry_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch) -> None:
+    controller = make_controller()
+    captured: dict[str, object] = {}
+    stale_target = make_device("target-serial")
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.devices = [stale_target]
+    controller.device_var.set(gui.device_label(stale_target))
+    controller.status.adb_ready = True
+    controller.reconnect_target_serial = "target-serial"
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = "target-serial"
+    controller.status.reconnect_attempt = 1
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    controller._run_background_task = fake_run_background_task
+    controller.start_stream = lambda: None
+
+    gui.LogcatToolGUI._retry_stream(controller)
+    captured["on_error"](RuntimeError("无法启动 adb：[WinError 6] 句柄无效。"))
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.stream_state == "failed"
+    assert controller.status.adb_ready is False
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_retry_stream_fails_when_reconnect_target_is_missing() -> None:
     controller = make_controller()
     controller.status.stream_state = "reconnecting"

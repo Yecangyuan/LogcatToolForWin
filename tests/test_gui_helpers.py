@@ -560,6 +560,50 @@ def test_refresh_visible_entries_prepares_keyword_filter_once_for_raw_log_batch(
     assert len(controller.visible_lines) == 3
 
 
+def test_handle_highlight_trace_rehighlights_only_visible_entries(monkeypatch) -> None:
+    controller = make_controller()
+    hidden_entry = make_entry("hidden line")
+    visible_entry = make_entry("visible line")
+    controller.raw_lines.extend([hidden_entry, visible_entry])
+    controller.visible_lines.extend([visible_entry])
+    controller.filters = FilterState(match_only=True)
+    rules = [HighlightRule(name="line", pattern="line", foreground="#fff")]
+    calls: list[LogEntry] = []
+    full_refreshes: list[str] = []
+    renders: list[str] = []
+
+    controller._current_highlight_rules = lambda: rules
+    controller._refresh_visible_entries = lambda: full_refreshes.append("full")
+    controller._render_visible = lambda: renders.append("render")
+
+    def match_highlights(entry_arg: LogEntry, rules_arg: list[HighlightRule]) -> tuple[str, ...]:
+        calls.append(entry_arg)
+        return ("line",)
+
+    monkeypatch.setattr(gui, "match_highlight_rules", match_highlights)
+
+    gui.LogcatToolGUI._handle_highlight_trace(controller)
+
+    assert full_refreshes == []
+    assert renders == ["render"]
+    assert calls == [visible_entry]
+    assert hidden_entry.highlight_keys == ()
+    assert visible_entry.highlight_keys == ("line",)
+
+
+def test_handle_auto_scroll_trace_scrolls_without_full_refresh() -> None:
+    controller = make_controller()
+    controller.auto_scroll_var.set(True)
+    full_refreshes: list[str] = []
+    controller._refresh_visible_entries = lambda: full_refreshes.append("full")
+
+    gui.LogcatToolGUI._handle_auto_scroll_trace(controller)
+
+    assert full_refreshes == []
+    assert controller.filters.auto_scroll is True
+    assert controller.text.see_calls == [gui.tk.END]
+
+
 def test_load_named_preset_batches_filter_refreshes() -> None:
     controller = make_controller()
     refreshes: list[str] = []

@@ -463,17 +463,31 @@ class LogcatToolGUI:
             self.level_var,
             self.tag_var,
             self.keyword_var,
-            self.highlight_var,
-            self.auto_scroll_var,
             self.match_only_var,
         ):
             trace_id = variable.trace_add("write", self._handle_filter_trace)
             self._filter_trace_ids.append((variable, trace_id))
+        highlight_trace_id = self.highlight_var.trace_add("write", self._handle_highlight_trace)
+        self._filter_trace_ids.append((self.highlight_var, highlight_trace_id))
+        auto_scroll_trace_id = self.auto_scroll_var.trace_add("write", self._handle_auto_scroll_trace)
+        self._filter_trace_ids.append((self.auto_scroll_var, auto_scroll_trace_id))
 
     def _handle_filter_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
             return
         self._refresh_visible_entries()
+
+    def _handle_highlight_trace(self, *_args: object) -> None:
+        if self._filter_refresh_suspended:
+            return
+        self._refresh_highlight_entries()
+
+    def _handle_auto_scroll_trace(self, *_args: object) -> None:
+        if self._filter_refresh_suspended:
+            return
+        self.filters = self._current_filters()
+        if self.auto_scroll_var.get():
+            self.text.see(tk.END)
 
     def _run_background_task(
         self,
@@ -1049,6 +1063,14 @@ class LogcatToolGUI:
                 self.visible_lines.append(entry)
             else:
                 entry.highlight_keys = ()
+        self._render_visible()
+
+    def _refresh_highlight_entries(self) -> None:
+        rules = self._current_highlight_rules()
+        self.filters = self._current_filters()
+        self.highlight_rules = rules
+        for entry in self.visible_lines:
+            entry.highlight_keys = match_highlight_rules(entry, rules)
         self._render_visible()
 
     def _render_visible(self) -> None:

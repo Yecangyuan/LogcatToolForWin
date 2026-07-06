@@ -869,13 +869,11 @@ class LogcatToolGUI:
         )
 
     def _prepare_wireless_adb(self, serial: str, port: int) -> tuple[str, str, list[DeviceInfo]]:
-        route_ip = ""
-        try:
-            route_ip = get_device_route_ip(serial)
-        except Exception:
-            route_ip = ""
+        route_ip = self._route_ip_for_serial(serial)
 
         tcpip_message = enable_tcpip(serial, port).strip()
+        if not route_ip:
+            route_ip = self._route_ip_for_serial(serial)
         target = ""
         if route_ip:
             target = f"{route_ip}:{port}"
@@ -932,7 +930,7 @@ class LogcatToolGUI:
             direct_error = exc
             if selected_usb_device is None:
                 raise
-            route_ip = self._route_ip_for_usb_device(selected_usb_device)
+            route_ip = self._route_ip_for_serial(selected_usb_device.serial)
             if route_ip and not self._usb_route_ip_matches_tcp_target(route_ip, target):
                 self._attach_usb_ip_hint_to_tcp_error(exc, target, route_ip)
                 raise
@@ -951,9 +949,9 @@ class LogcatToolGUI:
             f"{retry_message}"
         )
 
-    def _route_ip_for_usb_device(self, device: DeviceInfo) -> str:
+    def _route_ip_for_serial(self, serial: str) -> str:
         try:
-            return get_device_route_ip(device.serial).strip()
+            return get_device_route_ip(serial).strip()
         except Exception:
             return ""
 

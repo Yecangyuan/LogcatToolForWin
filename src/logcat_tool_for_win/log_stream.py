@@ -71,7 +71,11 @@ class LogcatSession:
             stderr = self.process.stderr
             if stderr is None:
                 return
-            text = stderr.read()
+            try:
+                text = stderr.read()
+            except Exception as exc:
+                stderr_text.append(str(exc) or exc.__class__.__name__)
+                return
             if text:
                 stderr_text.append(text.rstrip("\n"))
 

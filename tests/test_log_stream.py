@@ -131,6 +131,24 @@ class StdoutErrorPopen:
         return self.returncode
 
 
+class RaisingStderr:
+    def read(self) -> str:
+        raise OSError("stderr read failed")
+
+
+class StderrErrorPopen:
+    def __init__(self) -> None:
+        self.stdout = io.StringIO("")
+        self.stderr = RaisingStderr()
+        self.returncode = 0
+
+    def terminate(self) -> None:
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
 def test_parse_threadtime_line_extracts_fields() -> None:
     entry = parse_threadtime_line("06-18 12:00:00.000  1234  1235 E MyApp: crash")
     assert entry.level == "E"
@@ -273,6 +291,25 @@ def test_session_emits_stopped_event_when_stdout_read_fails() -> None:
         ("started", ""),
         ("line", ""),
         ("stderr", "stdout read failed"),
+        ("stopped", ""),
+    ]
+
+
+def test_session_emits_stderr_event_when_stderr_read_fails() -> None:
+    events: queue.Queue = queue.Queue()
+    session = LogcatSession(["adb", "logcat"], events, lambda *args, **kwargs: StderrErrorPopen())
+
+    session.start()
+    session.join()
+
+    received = []
+    while not events.empty():
+        event = events.get()
+        received.append((event.kind, event.message))
+
+    assert received == [
+        ("started", ""),
+        ("stderr", "stderr read failed"),
         ("stopped", ""),
     ]
 

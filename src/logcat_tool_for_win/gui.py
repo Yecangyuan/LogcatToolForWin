@@ -788,7 +788,17 @@ class LogcatToolGUI:
 
     def connect_tcp(self) -> None:
         raw_target = self.connect_var.get().strip()
+        selected_usb_device = self._selected_usb_device_for_tcp_connect()
         if not raw_target:
+            if selected_usb_device is not None:
+                self._run_background_task(
+                    f"正在为 {selected_usb_device.serial} 开启无线 ADB...",
+                    lambda: self._prepare_wireless_adb(selected_usb_device.serial, DEFAULT_TCP_PORT),
+                    self._handle_wireless_adb_success,
+                    self._handle_wireless_adb_error,
+                    task_key=DEVICE_SYNC_TASK_KEY,
+                )
+                return
             messagebox.showwarning("需要目标地址", "请输入 IP 或 IP:端口 格式的 TCP 目标。")
             return
         try:
@@ -800,7 +810,6 @@ class LogcatToolGUI:
             self.connect_var.set(target)
 
         existing_devices = list(self.devices)
-        selected_usb_device = self._selected_usb_device_for_tcp_connect()
 
         def action() -> tuple[str, str, list[DeviceInfo]]:
             connected_target, message = self._connect_tcp_target_with_usb_fallback(

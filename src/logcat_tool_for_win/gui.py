@@ -72,6 +72,7 @@ MAX_EVENTS_PER_TICK = 500
 FILTER_REFRESH_DELAY_MS = 120
 MAX_RECENT_TARGETS = 8
 DEVICE_SYNC_TASK_KEY = "device-sync"
+CLEAR_LOGCAT_TASK_KEY = "clear-logcat"
 T = TypeVar("T")
 
 BG = "#0F172A"
@@ -1405,6 +1406,7 @@ class LogcatToolGUI:
             lambda: clear_logcat(device.serial),
             lambda _result: self._handle_clear_logcat_success(),
             self._handle_clear_logcat_error,
+            task_key=CLEAR_LOGCAT_TASK_KEY,
         )
 
     def _handle_clear_logcat_success(self) -> None:

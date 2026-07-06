@@ -2623,6 +2623,45 @@ def test_clear_device_logcat_warns_when_adb_is_not_ready(monkeypatch) -> None:
     assert background_calls == []
 
 
+def test_clear_device_logcat_ignores_stale_failure_from_earlier_request(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    clear_results = iter([RuntimeError("old clear failed"), None])
+    errors: list[tuple[str, str]] = []
+
+    controller.status.adb_ready = True
+    controller._current_device = lambda: selected_device
+
+    def fake_clear_logcat(_serial: str) -> None:
+        result = next(clear_results)
+        if isinstance(result, Exception):
+            raise result
+
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(gui, "clear_logcat", fake_clear_logcat)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI.clear_device_logcat(controller)
+    gui.LogcatToolGUI.clear_device_logcat(controller)
+
+    assert len(controller.root.after_calls) == 2
+
+    _first_delay, first_callback = controller.root.after_calls[0]
+    _second_delay, second_callback = controller.root.after_calls[1]
+    first_callback()
+    second_callback()
+
+    assert errors == []
+    assert controller.status.last_error == "已清空设备 logcat。"
+
+
 def test_handle_clear_logcat_error_offers_to_switch_adb_path_for_launch_failures(
     monkeypatch,
 ) -> None:

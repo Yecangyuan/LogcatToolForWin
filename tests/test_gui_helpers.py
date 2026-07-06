@@ -73,6 +73,16 @@ class TriggeringVar(DummyVar):
         self.on_set()
 
 
+class CountingVar(DummyVar):
+    def __init__(self, value: object = "") -> None:
+        super().__init__(value)
+        self.set_calls = 0
+
+    def set(self, value: object) -> None:
+        self.set_calls += 1
+        super().set(value)
+
+
 class LowerCountingStr(str):
     def __new__(cls, value: str) -> "LowerCountingStr":
         instance = super().__new__(cls, value)
@@ -336,6 +346,19 @@ def test_poll_stream_skips_status_update_when_idle_queue_is_unchanged() -> None:
     assert controller.status_var.get() == "stable status"
     assert controller.summary_var.get() == "stable summary"
     assert controller.root.after_calls[0][0] == gui.QUEUE_DRAIN_MS
+
+
+def test_update_status_skips_redundant_variable_sets() -> None:
+    controller = make_controller()
+    status_text = gui.format_status_text(controller.status)
+    summary_text = gui.build_summary_text(0, 0, controller.status.stream_state)
+    controller.status_var = CountingVar(status_text)
+    controller.summary_var = CountingVar(summary_text)
+
+    gui.LogcatToolGUI._update_status(controller)
+
+    assert controller.status_var.set_calls == 0
+    assert controller.summary_var.set_calls == 0
 
 
 def test_poll_stream_appends_new_visible_lines_without_full_redraw() -> None:

@@ -1212,13 +1212,19 @@ class LogcatToolGUI:
                 return
 
     def _update_status(self) -> None:
-        self.status_var.set(format_status_text(self.status))
+        status_text = format_status_text(self.status)
+        if self.status_var.get() != status_text:
+            self.status_var.set(status_text)
         self._update_summary()
 
     def _update_summary(self) -> None:
-        self.summary_var.set(
-            build_summary_text(len(self.raw_lines), len(self.visible_lines), self.status.stream_state)
+        summary_text = build_summary_text(
+            len(self.raw_lines),
+            len(self.visible_lines),
+            self.status.stream_state,
         )
+        if self.summary_var.get() != summary_text:
+            self.summary_var.set(summary_text)
 
     def _on_close(self) -> None:
         self.save_session_state()

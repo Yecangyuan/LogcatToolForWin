@@ -155,6 +155,7 @@ class LogcatToolGUI:
         self.status = AppStatus()
         self.manual_stop = True
         self.reconnect_target_serial = ""
+        self._configured_highlight_styles: dict[str, tuple[str, str]] = {}
         self._filter_refresh_suspended = False
         self._filter_trace_ids: list[tuple[tk.Variable, str]] = []
 
@@ -1089,11 +1090,16 @@ class LogcatToolGUI:
         }
         for rule_name in sorted(used_rule_names):
             rule = rule_map[rule_name]
+            tag_name = build_highlight_text_tag(rule_name)
+            style = (rule.foreground, rule.background or "")
+            if self._configured_highlight_styles.get(tag_name) == style:
+                continue
             self.text.tag_config(
-                build_highlight_text_tag(rule_name),
-                foreground=rule.foreground,
-                background=rule.background or "",
+                tag_name,
+                foreground=style[0],
+                background=style[1],
             )
+            self._configured_highlight_styles[tag_name] = style
 
     def _insert_visible_entry(self, entry: LogEntry, rule_map: dict[str, HighlightRule]) -> None:
         highlight_names = (

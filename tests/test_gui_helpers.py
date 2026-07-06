@@ -221,6 +221,7 @@ def make_controller() -> gui.LogcatToolGUI:
     controller.visible_lines = deque()
     controller.filters = FilterState()
     controller.highlight_rules = []
+    controller._configured_highlight_styles = {}
     controller.auto_scroll_var = DummyVar(False)
     controller.match_only_var = DummyVar(False)
     controller.text = DummyText()
@@ -377,6 +378,51 @@ def test_append_visible_entries_configures_each_highlight_tag_once() -> None:
     assert controller.text.tag_add_calls == [
         ("highlight::ANR", "1.0", "2.0"),
         ("highlight::ANR", "2.0", "3.0"),
+    ]
+
+
+def test_append_visible_entries_reuses_existing_highlight_style_across_batches() -> None:
+    controller = make_controller()
+    controller.highlight_rules = [
+        HighlightRule(name="ANR", pattern="ANR", foreground="#ffcc00", background="#111111")
+    ]
+    first_entry = make_entry("ANR first")
+    second_entry = make_entry("ANR second")
+    first_entry.highlight_keys = ("ANR",)
+    first_entry.matches_filters = True
+    second_entry.highlight_keys = ("ANR",)
+    second_entry.matches_filters = True
+
+    gui.LogcatToolGUI._append_visible_entries(controller, [first_entry])
+    gui.LogcatToolGUI._append_visible_entries(controller, [second_entry])
+
+    assert controller.text.tag_config_calls == [
+        ("highlight::ANR", {"foreground": "#ffcc00", "background": "#111111"})
+    ]
+
+
+def test_append_visible_entries_reconfigures_highlight_when_style_changes() -> None:
+    controller = make_controller()
+    first_entry = make_entry("ANR first")
+    second_entry = make_entry("ANR second")
+    first_entry.highlight_keys = ("ANR",)
+    first_entry.matches_filters = True
+    second_entry.highlight_keys = ("ANR",)
+    second_entry.matches_filters = True
+
+    controller.highlight_rules = [
+        HighlightRule(name="ANR", pattern="ANR", foreground="#ffcc00", background="#111111")
+    ]
+    gui.LogcatToolGUI._append_visible_entries(controller, [first_entry])
+
+    controller.highlight_rules = [
+        HighlightRule(name="ANR", pattern="ANR", foreground="#ffaa00", background="#222222")
+    ]
+    gui.LogcatToolGUI._append_visible_entries(controller, [second_entry])
+
+    assert controller.text.tag_config_calls == [
+        ("highlight::ANR", {"foreground": "#ffcc00", "background": "#111111"}),
+        ("highlight::ANR", {"foreground": "#ffaa00", "background": "#222222"}),
     ]
 
 

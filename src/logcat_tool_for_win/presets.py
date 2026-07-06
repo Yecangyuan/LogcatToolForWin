@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from logcat_tool_for_win.adb import normalize_tcp_target
 from logcat_tool_for_win.filters import LEVEL_ORDER, normalize_tag_filters
 from logcat_tool_for_win.models import FilterState, HighlightRule, NamedPreset
 
@@ -71,7 +72,10 @@ def _normalize_highlight_patterns(value: object) -> tuple[str, ...]:
 def _coerce_recent_target(value: object) -> str:
     if not isinstance(value, str):
         return ""
-    return value.strip()
+    try:
+        return normalize_tcp_target(value)
+    except ValueError:
+        return ""
 
 
 def _normalize_recent_targets(value: object) -> list[str]:

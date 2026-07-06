@@ -204,7 +204,35 @@ def test_load_state_normalizes_recent_target_history(tmp_path: Path) -> None:
     assert recent_targets == [
         "192.168.1.111:5555",
         "192.168.1.112:5555",
-        "192.168.1.113",
+        "192.168.1.113:5555",
+    ]
+
+
+def test_load_state_skips_invalid_recent_targets_and_normalizes_ports(tmp_path: Path) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "filters": {},
+                "highlight_rules": [],
+                "recent_target": " 192.168.1.111 ",
+                "recent_targets": [
+                    "192.168.1.112",
+                    "bad target",
+                    "192.168.1.111:5555",
+                    "192.168.1.112:5555",
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _loaded_filters, _loaded_rules, recent_target, recent_targets = load_state(state_file)
+
+    assert recent_target == "192.168.1.111:5555"
+    assert recent_targets == [
+        "192.168.1.111:5555",
+        "192.168.1.112:5555",
     ]
 
 

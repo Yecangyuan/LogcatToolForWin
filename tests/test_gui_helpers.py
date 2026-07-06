@@ -1296,6 +1296,32 @@ def test_save_session_state_persists_recent_target_history(monkeypatch) -> None:
     )
 
 
+def test_save_session_state_skips_invalid_recent_target_history(monkeypatch) -> None:
+    controller = make_controller()
+    controller.state_file = Path("/tmp/state.json")
+    controller.filters = FilterState(minimum_level="W")
+    controller.highlight_rules = []
+    controller.connect_var.set("not-a-target")
+    controller.recent_targets = ["192.168.1.112:5555"]
+    controller._current_filters = lambda: controller.filters
+    controller._current_highlight_rules = lambda: controller.highlight_rules
+    controller._update_status = lambda: None
+    captured: dict[str, object] = {}
+
+    def fake_save_state(path, filters, rules, recent_target, recent_targets) -> None:
+        captured["recent_target"] = recent_target
+        captured["recent_targets"] = recent_targets
+
+    monkeypatch.setattr(gui, "save_state", fake_save_state)
+    monkeypatch.setattr(gui, "messagebox", SimpleNamespace(showwarning=lambda *args: None, showerror=lambda *args: None))
+
+    gui.LogcatToolGUI.save_session_state(controller)
+
+    assert captured["recent_target"] == "not-a-target"
+    assert captured["recent_targets"] == ["192.168.1.112:5555"]
+    assert controller.connect_combo.values == ("192.168.1.112:5555",)
+
+
 def test_select_device_by_serial_preserves_active_stream_target() -> None:
     controller = make_controller()
     usb_device = make_device("USB123")

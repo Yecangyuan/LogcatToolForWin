@@ -731,8 +731,9 @@ class LogcatToolGUI:
         )
 
     def _remember_connect_target(self, target: str) -> None:
-        normalized_target = target.strip()
-        if not normalized_target:
+        try:
+            normalized_target = normalize_tcp_target(target)
+        except ValueError:
             return
         self.recent_targets = [
             normalized_target,
@@ -943,6 +944,7 @@ class LogcatToolGUI:
         self.highlight_rules = self._current_highlight_rules()
         recent_target = self.connect_var.get().strip()
         self._remember_connect_target(recent_target)
+        self._refresh_connect_choices()
         try:
             save_state(
                 self.state_file,

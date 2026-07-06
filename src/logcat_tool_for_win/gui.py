@@ -627,8 +627,9 @@ class LogcatToolGUI:
         self._update_status()
 
     def _handle_connect_tcp_error(self, exc: Exception) -> None:
-        messagebox.showerror("连接失败", str(exc))
-        self.status.last_error = str(exc)
+        message = self._format_connect_tcp_error_message(exc)
+        messagebox.showerror("连接失败", message)
+        self.status.last_error = message
         self._update_status()
 
     def enable_wireless_adb(self) -> None:
@@ -699,12 +700,28 @@ class LogcatToolGUI:
         self._update_status()
 
     def _handle_wireless_adb_error(self, exc: Exception) -> None:
-        messagebox.showerror("开启无线失败", str(exc))
-        self.status.last_error = str(exc)
+        message = self._format_wireless_adb_error_message(exc)
+        messagebox.showerror("开启无线失败", message)
+        self.status.last_error = message
         self._update_status()
 
     def _connect_tcp_target(self, target: str) -> str:
         return connect_device(target, attempts=3, delay_seconds=1.0)
+
+    def _format_connect_tcp_error_message(self, exc: Exception) -> str:
+        message = str(exc).strip() or "连接失败。"
+        return (
+            f"{message}\n\n"
+            "当前“连接”按钮只会直连目标地址。"
+            "如果这台手机还没开启无线 ADB，请先用 USB 连上后点“USB 转无线”。"
+        )
+
+    def _format_wireless_adb_error_message(self, exc: Exception) -> str:
+        message = str(exc).strip() or "开启无线 ADB 失败。"
+        return (
+            f"{message}\n\n"
+            "请确认当前选择的是已授权 USB 调试的设备，并保持数据线连接稳定后再试。"
+        )
 
     def _current_device(self) -> DeviceInfo:
         current = self.device_var.get()

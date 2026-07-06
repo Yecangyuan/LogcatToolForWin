@@ -1167,6 +1167,35 @@ def test_connect_tcp_keeps_connected_target_when_device_refresh_fails(monkeypatc
     )
 
 
+def test_handle_connect_tcp_error_explains_usb_to_wireless_next_step(monkeypatch) -> None:
+    controller = make_controller()
+    errors: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_connect_tcp_error(
+        controller,
+        ADBCommandError("无法连接 192.168.1.111:5555。原始错误：connection refused"),
+    )
+
+    assert errors == [
+        (
+            "连接失败",
+            "无法连接 192.168.1.111:5555。原始错误：connection refused\n\n"
+            "当前“连接”按钮只会直连目标地址。"
+            "如果这台手机还没开启无线 ADB，请先用 USB 连上后点“USB 转无线”。",
+        )
+    ]
+    assert controller.status.last_error == errors[0][1]
+
+
 def test_connect_tcp_selects_connected_tcp_device_when_usb_was_selected(monkeypatch) -> None:
     controller = make_controller()
     usb_device = make_device("USB123")
@@ -1543,3 +1572,31 @@ def test_enable_wireless_adb_explains_manual_connect_when_ip_is_unknown(monkeypa
     gui.LogcatToolGUI.enable_wireless_adb(controller)
 
     assert "手机 IP:5555" in controller.status.last_error
+
+
+def test_handle_wireless_adb_error_explains_usb_checks(monkeypatch) -> None:
+    controller = make_controller()
+    errors: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_wireless_adb_error(
+        controller,
+        RuntimeError("device offline"),
+    )
+
+    assert errors == [
+        (
+            "开启无线失败",
+            "device offline\n\n"
+            "请确认当前选择的是已授权 USB 调试的设备，并保持数据线连接稳定后再试。",
+        )
+    ]
+    assert controller.status.last_error == errors[0][1]

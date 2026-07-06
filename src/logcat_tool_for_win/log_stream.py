@@ -140,3 +140,5 @@ class LogcatSession:
     def join(self) -> None:
         if self.worker is not None:
             self.worker.join(timeout=2)
+            if self.worker.is_alive():
+                raise RuntimeError("logcat worker did not stop within 2 seconds.")

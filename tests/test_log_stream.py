@@ -3,6 +3,8 @@ import queue
 import subprocess
 import threading
 
+import pytest
+
 from logcat_tool_for_win.log_stream import LogcatSession, parse_threadtime_line
 
 
@@ -473,3 +475,26 @@ def test_session_emits_started_line_and_stderr_events() -> None:
 
     assert kinds[:3] == ["started", "line", "stderr"]
     assert kinds[-1] == "stopped"
+
+
+def test_session_join_raises_when_worker_does_not_finish() -> None:
+    events: queue.Queue = queue.Queue()
+    session = LogcatSession(["adb", "logcat"], events)
+
+    class LingeringWorker:
+        def __init__(self) -> None:
+            self.timeouts: list[float | None] = []
+
+        def join(self, timeout: float | None = None) -> None:
+            self.timeouts.append(timeout)
+
+        def is_alive(self) -> bool:
+            return True
+
+    worker = LingeringWorker()
+    session.worker = worker  # type: ignore[assignment]
+
+    with pytest.raises(RuntimeError, match="logcat worker did not stop within 2 seconds"):
+        session.join()
+
+    assert worker.timeouts == [2]

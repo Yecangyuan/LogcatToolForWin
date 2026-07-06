@@ -176,6 +176,14 @@ class FailingSession:
         return None
 
 
+class JoinFailingSession:
+    def stop(self) -> None:
+        return None
+
+    def join(self) -> None:
+        raise RuntimeError("logcat worker did not stop within 2 seconds.")
+
+
 class ImmediateThread:
     def __init__(self, target, daemon: bool) -> None:
         self.target = target
@@ -990,6 +998,18 @@ def test_stop_stream_clears_retry_state_when_stop_fails_during_reconnect() -> No
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == "stop failed"
+
+
+def test_stop_stream_surfaces_join_failures_instead_of_claiming_idle() -> None:
+    controller = make_controller()
+    controller.session = JoinFailingSession()
+    controller.status.stream_state = "streaming"
+    controller.status.active_device_serial = "R58M12345"
+
+    gui.LogcatToolGUI.stop_stream(controller)
+
+    assert controller.status.stream_state == "failed"
+    assert controller.status.last_error == "logcat worker did not stop within 2 seconds."
 
 
 def test_stop_active_session_retains_failed_session_ownership() -> None:

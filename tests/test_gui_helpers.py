@@ -1542,6 +1542,7 @@ def test_connect_tcp_does_not_fall_back_to_selected_usb_device_when_target_ip_mi
     controller.connect_var.set(tcp_device.serial)
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
+    route_ip_lookups: list[str] = []
 
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
@@ -1558,17 +1559,26 @@ def test_connect_tcp_does_not_fall_back_to_selected_usb_device_when_target_ip_mi
         raise ADBCommandError("connection refused")
 
     monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
-    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.222")
+    monkeypatch.setattr(
+        gui,
+        "get_device_route_ip",
+        lambda serial: route_ip_lookups.append(serial) or "192.168.1.222",
+    )
     monkeypatch.setattr(gui, "connect_device", fake_connect_device)
     monkeypatch.setattr(gui, "list_devices", lambda: [usb_device, tcp_device])
     controller._run_background_task = fake_run_background_task
 
     gui.LogcatToolGUI.connect_tcp(controller)
-    with pytest.raises(ADBCommandError, match="connection refused"):
+    with pytest.raises(ADBCommandError) as exc_info:
         captured["action"]()
 
     assert calls == [("connect", ("192.168.1.111:5555", 3, 1.0))]
+    assert route_ip_lookups == ["USB123"]
     assert controller.device_var.get() == gui.device_label(usb_device)
+    assert "connection refused" in str(exc_info.value)
+    assert getattr(exc_info.value, "usb_ip_hint", "") == (
+        "当前选中的 USB 设备 IP 是 192.168.1.222；可改连 192.168.1.222:5555。"
+    )
 
 
 def test_connect_tcp_does_not_fall_back_without_manual_usb_selection(
@@ -1680,13 +1690,12 @@ def test_handle_connect_tcp_error_explains_usb_to_wireless_next_step(monkeypatch
 
 def test_handle_connect_tcp_error_shows_selected_usb_ip_when_target_mismatches(monkeypatch) -> None:
     controller = make_controller()
-    usb_device = make_device("USB123")
-    controller.devices = [usb_device]
-    controller.device_var.set(gui.device_label(usb_device))
-    controller.connect_var.set("192.168.1.111:5555")
     errors: list[tuple[str, str]] = []
 
-    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.222")
+    def fail_route_ip_lookup(serial: str) -> str:
+        raise AssertionError("UI thread should not query device IP during error formatting")
+
+    monkeypatch.setattr(gui, "get_device_route_ip", fail_route_ip_lookup)
     monkeypatch.setattr(
         gui,
         "messagebox",
@@ -1696,9 +1705,11 @@ def test_handle_connect_tcp_error_shows_selected_usb_ip_when_target_mismatches(m
         ),
     )
 
+    error = ADBCommandError("无法连接 192.168.1.111:5555。原始错误：connection refused")
+    error.usb_ip_hint = "当前选中的 USB 设备 IP 是 192.168.1.222；可改连 192.168.1.222:5555。"
     gui.LogcatToolGUI._handle_connect_tcp_error(
         controller,
-        ADBCommandError("无法连接 192.168.1.111:5555。原始错误：connection refused"),
+        error,
     )
 
     assert "当前选中的 USB 设备 IP 是 192.168.1.222" in errors[0][1]
@@ -1708,13 +1719,12 @@ def test_handle_connect_tcp_error_shows_selected_usb_ip_when_target_mismatches(m
 
 def test_handle_connect_tcp_error_ignores_usb_ip_hint_when_device_ip_matches_target(monkeypatch) -> None:
     controller = make_controller()
-    usb_device = make_device("USB123")
-    controller.devices = [usb_device]
-    controller.device_var.set(gui.device_label(usb_device))
-    controller.connect_var.set("192.168.1.111:5555")
     errors: list[tuple[str, str]] = []
 
-    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.111")
+    def fail_route_ip_lookup(serial: str) -> str:
+        raise AssertionError("UI thread should not query device IP during error formatting")
+
+    monkeypatch.setattr(gui, "get_device_route_ip", fail_route_ip_lookup)
     monkeypatch.setattr(
         gui,
         "messagebox",

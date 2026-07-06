@@ -930,10 +930,11 @@ class LogcatToolGUI:
             return self._connect_tcp_target(target)
         except ADBCommandError as exc:
             direct_error = exc
-            if selected_usb_device is None or not self._usb_device_matches_tcp_target(
-                selected_usb_device,
-                target,
-            ):
+            if selected_usb_device is None:
+                raise
+            route_ip = self._route_ip_for_usb_device(selected_usb_device)
+            if route_ip and not self._usb_route_ip_matches_tcp_target(route_ip, target):
+                self._attach_usb_ip_hint_to_tcp_error(exc, target, route_ip)
                 raise
 
         port = extract_tcp_port(target, DEFAULT_TCP_PORT)
@@ -950,13 +951,28 @@ class LogcatToolGUI:
             f"{retry_message}"
         )
 
-    def _usb_device_matches_tcp_target(self, device: DeviceInfo, target: str) -> bool:
-        target_host = target.rsplit(":", 1)[0]
+    def _route_ip_for_usb_device(self, device: DeviceInfo) -> str:
         try:
-            route_ip = get_device_route_ip(device.serial).strip()
+            return get_device_route_ip(device.serial).strip()
         except Exception:
+            return ""
+
+    def _usb_route_ip_matches_tcp_target(self, route_ip: str, target: str) -> bool:
+        if not route_ip:
             return True
-        return not route_ip or route_ip == target_host
+        target_host = target.rsplit(":", 1)[0]
+        return route_ip == target_host
+
+    def _attach_usb_ip_hint_to_tcp_error(
+        self,
+        error: ADBCommandError,
+        target: str,
+        route_ip: str,
+    ) -> None:
+        if not route_ip:
+            return
+        _target_host, target_port = target.rsplit(":", 1)
+        error.usb_ip_hint = f"当前选中的 USB 设备 IP 是 {route_ip}；可改连 {route_ip}:{target_port}。"
 
     def _format_connect_tcp_retry_error(
         self,
@@ -972,28 +988,9 @@ class LogcatToolGUI:
             f"但仍失败：{retry_message}"
         )
 
-    def _selected_usb_ip_hint_for_tcp_error(self) -> str:
-        selected_usb_device = self._selected_usb_device_for_tcp_connect()
-        if selected_usb_device is None:
-            return ""
-        try:
-            route_ip = get_device_route_ip(selected_usb_device.serial).strip()
-        except Exception:
-            return ""
-        if not route_ip:
-            return ""
-        try:
-            target = normalize_tcp_target(self.connect_var.get().strip())
-        except ValueError:
-            return ""
-        target_host, target_port = target.rsplit(":", 1)
-        if route_ip == target_host:
-            return ""
-        return f"当前选中的 USB 设备 IP 是 {route_ip}；可改连 {route_ip}:{target_port}。"
-
     def _format_connect_tcp_error_message(self, exc: Exception) -> str:
         message = str(exc).strip() or "连接失败。"
-        usb_ip_hint = self._selected_usb_ip_hint_for_tcp_error()
+        usb_ip_hint = getattr(exc, "usb_ip_hint", "").strip()
         diagnostics = f"\n\n{usb_ip_hint}" if usb_ip_hint else ""
         return (
             f"{message}\n\n"

@@ -1961,6 +1961,21 @@ def test_retry_stream_fails_when_reconnect_target_is_missing() -> None:
     assert controller.status.last_error == "重连设备不可用：缺少重连目标。"
 
 
+def test_retry_stream_ignores_stale_timer_after_stream_has_resumed() -> None:
+    controller = make_controller()
+    background_calls: list[str] = []
+    controller.status.stream_state = "streaming"
+    controller.status.active_device_serial = "target-serial"
+    controller.reconnect_target_serial = "target-serial"
+    controller.status.last_error = "stream healthy"
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    gui.LogcatToolGUI._retry_stream(controller)
+
+    assert background_calls == []
+    assert controller.status.last_error == "stream healthy"
+
+
 def test_retry_stream_does_not_restart_from_stale_devices_after_refresh_failure() -> None:
     controller = make_controller()
     stale_target = make_device("target-serial")

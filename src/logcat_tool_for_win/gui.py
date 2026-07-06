@@ -1220,7 +1220,7 @@ class LogcatToolGUI:
 
     def _retry_stream(self) -> None:
         target_serial = getattr(self, "reconnect_target_serial", "") or self.status.active_device_serial
-        if self.manual_stop:
+        if self.manual_stop or self.status.stream_state != "reconnecting":
             return
         if not target_serial:
             self._fail_retry_stream("缺少重连目标。")

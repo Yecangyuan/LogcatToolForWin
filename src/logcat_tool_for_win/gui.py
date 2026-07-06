@@ -1522,27 +1522,31 @@ class LogcatToolGUI:
 
         previous_manual_path = get_manual_adb_path()
 
-        def action() -> tuple[str, list[DeviceInfo]]:
+        def action() -> tuple[str, list[DeviceInfo], Optional[Path], str]:
             set_manual_adb_path(selected_path)
-            devices = list_devices()
-            return f"{success_message_prefix}{resolve_adb_path()}", devices
-
-        def handle_error(exc: Exception) -> None:
-            set_manual_adb_path(previous_manual_path)
-            self._handle_configure_adb_path_error(exc)
+            try:
+                devices = list_devices()
+                resolved_path = str(resolve_adb_path())
+            finally:
+                set_manual_adb_path(previous_manual_path)
+            return f"{success_message_prefix}{resolved_path}", devices, selected_path, resolved_path
 
         self._run_background_task(
             "正在切换 ADB...",
             action,
             self._handle_configure_adb_path_success,
-            handle_error,
+            self._handle_configure_adb_path_error,
             task_key=DEVICE_SYNC_TASK_KEY,
         )
 
-    def _handle_configure_adb_path_success(self, result: tuple[str, list[DeviceInfo]]) -> None:
-        message, devices = result
+    def _handle_configure_adb_path_success(
+        self,
+        result: tuple[str, list[DeviceInfo], Optional[Path], str],
+    ) -> None:
+        message, devices, selected_path, resolved_path = result
+        set_manual_adb_path(selected_path)
         self._apply_devices(devices)
-        self.status.adb_path = str(resolve_adb_path())
+        self.status.adb_path = resolved_path
         self.status.last_error = message
         self._update_status()
 

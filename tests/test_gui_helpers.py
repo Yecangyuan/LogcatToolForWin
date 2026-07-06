@@ -2859,6 +2859,7 @@ def test_configure_adb_path_switches_to_selected_exe_and_refreshes_devices(monke
             askopenfilename=lambda **kwargs: selected_path,
         ),
     )
+    monkeypatch.setattr(gui, "get_manual_adb_path", lambda: None)
     monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: calls.append(("set", str(path))))
     monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path(selected_path))
     monkeypatch.setattr(gui, "list_devices", lambda: [device])
@@ -2871,7 +2872,12 @@ def test_configure_adb_path_switches_to_selected_exe_and_refreshes_devices(monke
     result = captured["action"]()
     captured["on_success"](result)
 
-    assert calls == [("stop", None), ("set", selected_path)]
+    assert calls == [
+        ("stop", None),
+        ("set", selected_path),
+        ("set", "None"),
+        ("set", selected_path),
+    ]
     assert controller.devices == [device]
     assert controller.status.adb_path == selected_path
     assert controller.status.last_error == f"已切换 ADB：{selected_path}"
@@ -2883,6 +2889,7 @@ def test_configure_adb_path_resets_to_auto_detection(monkeypatch) -> None:
     auto_path = "C:/platform-tools/adb.exe"
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
+    previous_manual_path = Path("C:/existing/adb.exe")
 
     controller.stop_stream = lambda: calls.append(("stop", None))
 
@@ -2910,6 +2917,7 @@ def test_configure_adb_path_resets_to_auto_detection(monkeypatch) -> None:
             ),
         ),
     )
+    monkeypatch.setattr(gui, "get_manual_adb_path", lambda: previous_manual_path)
     monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: calls.append(("set", path)))
     monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path(auto_path))
     monkeypatch.setattr(gui, "list_devices", lambda: [device])
@@ -2922,9 +2930,61 @@ def test_configure_adb_path_resets_to_auto_detection(monkeypatch) -> None:
     result = captured["action"]()
     captured["on_success"](result)
 
-    assert calls == [("stop", None), ("set", None)]
+    assert calls == [("stop", None), ("set", None), ("set", previous_manual_path), ("set", None)]
     assert controller.devices == [device]
     assert controller.status.last_error == f"已恢复自动检测 ADB：{auto_path}"
+
+
+def test_configure_adb_path_reverts_temporary_path_when_result_becomes_stale(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("R58M12345")
+    selected_path = Path("C:/Android/platform-tools/adb.exe")
+    previous_path = Path("C:/existing/adb.exe")
+    manual_path_state = {"value": previous_path}
+    set_calls: list[Path | None] = []
+
+    controller.stop_stream = lambda: None
+
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            askyesnocancel=lambda title, message: True,
+            showwarning=lambda *args: None,
+            showerror=lambda *args: None,
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "filedialog",
+        SimpleNamespace(
+            askopenfilename=lambda **kwargs: str(selected_path),
+        ),
+    )
+    monkeypatch.setattr(gui, "get_manual_adb_path", lambda: manual_path_state["value"])
+    monkeypatch.setattr(
+        gui,
+        "set_manual_adb_path",
+        lambda path: set_calls.append(path) or manual_path_state.__setitem__("value", path),
+    )
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: selected_path)
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+
+    gui.LogcatToolGUI.configure_adb_path(controller)
+
+    assert manual_path_state["value"] == previous_path
+    assert len(controller.root.after_calls) == 1
+
+    controller._advance_background_task_version(gui.DEVICE_SYNC_TASK_KEY)
+
+    _delay, callback = controller.root.after_calls[0]
+    callback()
+
+    assert manual_path_state["value"] == previous_path
+    assert set_calls == [selected_path, previous_path]
+    assert controller.devices == []
+    assert controller.status.last_error == "正在切换 ADB..."
 
 
 def test_restart_adb_aborts_when_stream_stop_fails(monkeypatch) -> None:

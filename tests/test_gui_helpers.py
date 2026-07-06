@@ -1678,6 +1678,61 @@ def test_handle_connect_tcp_error_explains_usb_to_wireless_next_step(monkeypatch
     assert controller.status.last_error == errors[0][1]
 
 
+def test_handle_connect_tcp_error_shows_selected_usb_ip_when_target_mismatches(monkeypatch) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.connect_var.set("192.168.1.111:5555")
+    errors: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.222")
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_connect_tcp_error(
+        controller,
+        ADBCommandError("无法连接 192.168.1.111:5555。原始错误：connection refused"),
+    )
+
+    assert "当前选中的 USB 设备 IP 是 192.168.1.222" in errors[0][1]
+    assert "可改连 192.168.1.222:5555" in errors[0][1]
+    assert controller.status.last_error == errors[0][1]
+
+
+def test_handle_connect_tcp_error_ignores_usb_ip_hint_when_device_ip_matches_target(monkeypatch) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.connect_var.set("192.168.1.111:5555")
+    errors: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.111")
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_connect_tcp_error(
+        controller,
+        ADBCommandError("无法连接 192.168.1.111:5555。原始错误：connection refused"),
+    )
+
+    assert "当前选中的 USB 设备 IP 是" not in errors[0][1]
+    assert controller.status.last_error == errors[0][1]
+
+
 def test_connect_tcp_selects_connected_tcp_device_when_usb_was_selected(monkeypatch) -> None:
     controller = make_controller()
     usb_device = make_device("USB123")

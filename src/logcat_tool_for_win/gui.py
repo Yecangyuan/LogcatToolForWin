@@ -972,13 +972,35 @@ class LogcatToolGUI:
             f"但仍失败：{retry_message}"
         )
 
+    def _selected_usb_ip_hint_for_tcp_error(self) -> str:
+        selected_usb_device = self._selected_usb_device_for_tcp_connect()
+        if selected_usb_device is None:
+            return ""
+        try:
+            route_ip = get_device_route_ip(selected_usb_device.serial).strip()
+        except Exception:
+            return ""
+        if not route_ip:
+            return ""
+        try:
+            target = normalize_tcp_target(self.connect_var.get().strip())
+        except ValueError:
+            return ""
+        target_host, target_port = target.rsplit(":", 1)
+        if route_ip == target_host:
+            return ""
+        return f"当前选中的 USB 设备 IP 是 {route_ip}；可改连 {route_ip}:{target_port}。"
+
     def _format_connect_tcp_error_message(self, exc: Exception) -> str:
         message = str(exc).strip() or "连接失败。"
+        usb_ip_hint = self._selected_usb_ip_hint_for_tcp_error()
+        diagnostics = f"\n\n{usb_ip_hint}" if usb_ip_hint else ""
         return (
             f"{message}\n\n"
             "已先尝试直连目标地址。"
             "如果当前选中的是已授权的 USB 设备，程序也会自动尝试为它开启无线 ADB 后再重连；"
             f"也可以手动点“{WIRELESS_ADB_BUTTON_LABEL}”。"
+            f"{diagnostics}"
         )
 
     def _format_wireless_adb_error_message(self, exc: Exception) -> str:

@@ -372,6 +372,21 @@ def test_schedule_reconnect_exhaustion_clears_retry_state() -> None:
     assert controller.status.last_error == "重连次数已用尽。"
 
 
+def test_schedule_reconnect_fails_immediately_when_target_is_missing() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.status.active_device_serial = ""
+    controller.reconnect_target_serial = ""
+
+    gui.LogcatToolGUI._schedule_reconnect(controller)
+
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == "重连设备不可用：缺少重连目标。"
+    assert controller.root.after_calls == []
+
+
 def test_poll_stream_ignores_reschedule_failure_after_close() -> None:
     controller = make_controller()
     controller.root = DestroyedRoot()

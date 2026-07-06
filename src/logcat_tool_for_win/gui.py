@@ -1234,6 +1234,9 @@ class LogcatToolGUI:
             return
 
         self.reconnect_target_serial = self.reconnect_target_serial or self.status.active_device_serial
+        if not self.reconnect_target_serial:
+            self._fail_retry_stream("缺少重连目标。")
+            return
         self.status.reconnect_attempt += 1
         self.status.stream_state = "reconnecting"
         if not self.status.last_error:

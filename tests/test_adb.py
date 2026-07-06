@@ -206,6 +206,82 @@ def test_connect_device_adds_actionable_hint_to_failed_connect_output(
     assert "原始错误：failed to connect to 192.168.0.8:5555: Connection refused" in message
 
 
+def test_connect_device_explains_connection_refused_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="failed to connect to 192.168.0.8:5555: Connection refused\n",
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555")
+
+    message = str(exc_info.value)
+    assert "目标端口拒绝连接" in message
+    assert "先在 USB 模式下开启无线 ADB" in message
+
+
+def test_connect_device_explains_timeout_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="failed to connect to 192.168.0.8:5555: Operation timed out\n",
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555")
+
+    message = str(exc_info.value)
+    assert "连接超时" in message
+    assert "确认手机当前 IP 是否仍然是 192.168.0.8" in message
+
+
+def test_connect_device_explains_unreachable_network_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="failed to connect to 192.168.0.8:5555: No route to host\n",
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555")
+
+    message = str(exc_info.value)
+    assert "无法到达目标设备" in message
+    assert "电脑和手机不在同一网段" in message
+
+
+def test_connect_device_explains_local_adb_daemon_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="cannot connect to daemon at tcp:5037: Connection refused\n",
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555")
+
+    message = str(exc_info.value)
+    assert "本机 ADB 服务异常" in message
+    assert "可先点界面的“重启 ADB”" in message
+
+
 def test_connect_device_rejects_connected_output_for_different_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

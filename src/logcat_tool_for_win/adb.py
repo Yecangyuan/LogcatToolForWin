@@ -201,13 +201,29 @@ def _combine_process_output(stdout: str, stderr: str) -> str:
     return "\n".join(parts) + suffix
 
 
+def _specific_connect_failure_hint(target: str, message: str) -> str:
+    lowered = message.lower()
+    host = target.rsplit(":", 1)[0]
+    if "cannot connect to daemon at tcp:5037" in lowered:
+        return "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
+    if "connection refused" in lowered or "actively refused" in lowered:
+        return "目标端口拒绝连接。通常是手机端还没监听该端口；请先在 USB 模式下开启无线 ADB，再重新连接。"
+    if "timed out" in lowered or "timeout" in lowered:
+        return f"连接超时。请确认手机当前 IP 是否仍然是 {host}，并检查路由器隔离、防火墙或端口拦截。"
+    if "no route to host" in lowered or "network is unreachable" in lowered:
+        return "无法到达目标设备。通常是电脑和手机不在同一网段，或目标 IP 已变化。"
+    return ""
+
+
 def format_connect_error(target: str, error: ADBCommandError) -> ADBCommandError:
     message = str(error).strip()
+    detail = _specific_connect_failure_hint(target, message)
+    hint = TCP_CONNECT_FAILURE_HINT if not detail else f"{detail} {TCP_CONNECT_FAILURE_HINT}"
     if not message:
-        return ADBCommandError(f"无法连接 {target}。{TCP_CONNECT_FAILURE_HINT}")
+        return ADBCommandError(f"无法连接 {target}。{hint}")
     if message.startswith(f"无法连接 {target}"):
         return ADBCommandError(message)
-    return ADBCommandError(f"无法连接 {target}。{TCP_CONNECT_FAILURE_HINT}\n原始错误：{message}")
+    return ADBCommandError(f"无法连接 {target}。{hint}\n原始错误：{message}")
 
 
 def parse_route_source_ip(output: str) -> str:

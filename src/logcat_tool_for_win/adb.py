@@ -22,7 +22,7 @@ ADB_LAUNCH_OPTIONS = (
 )
 TCP_CONNECT_FAILURE_HINT = (
     "请确认手机和电脑在同一局域网；手机已开启 USB 调试并允许授权；"
-    "如果还没有通过 USB 开启无线 ADB，请先连接 USB 后点连接或开启无线 ADB；"
+    "如果还没有通过 USB 开启无线 ADB，请先用 USB 连上后点“开启无线”；"
     "并确认端口未被防火墙拦截。"
 )
 
@@ -207,7 +207,7 @@ def _specific_connect_failure_hint(target: str, message: str) -> str:
     if "cannot connect to daemon at tcp:5037" in lowered:
         return "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
     if "connection refused" in lowered or "actively refused" in lowered:
-        return "目标端口拒绝连接。通常是手机端还没监听该端口；请先在 USB 模式下开启无线 ADB，再重新连接。"
+        return "目标端口拒绝连接。通常是手机端还没监听该端口；请先用 USB 连上后点“开启无线”，再重新连接。"
     if "timed out" in lowered or "timeout" in lowered:
         return f"连接超时。请确认手机当前 IP 是否仍然是 {host}，并检查路由器隔离、防火墙或端口拦截。"
     if "no route to host" in lowered or "network is unreachable" in lowered:

@@ -720,7 +720,7 @@ class LogcatToolGUI:
         return (
             f"{message}\n\n"
             "当前“连接”按钮只会直连目标地址。"
-            "如果这台手机还没开启无线 ADB，请先用 USB 连上后点“USB 转无线”。"
+            "如果这台手机还没开启无线 ADB，请先用 USB 连上后点“开启无线”。"
         )
 
     def _format_wireless_adb_error_message(self, exc: Exception) -> str:

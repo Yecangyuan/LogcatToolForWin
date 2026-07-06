@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 import queue
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Iterable, Optional, TypeVar, Union
 
@@ -65,6 +66,8 @@ from logcat_tool_for_win.presets import load_presets, load_state, save_preset, s
 
 MAX_RECONNECT_ATTEMPTS = 3
 RECONNECT_DELAY_MS = 2_000
+WIRELESS_ROUTE_IP_RETRY_ATTEMPTS = 4
+WIRELESS_ROUTE_IP_RETRY_DELAY_SECONDS = 0.5
 MAX_EVENTS_PER_TICK = 500
 FILTER_REFRESH_DELAY_MS = 120
 MAX_RECENT_TARGETS = 8
@@ -906,7 +909,11 @@ class LogcatToolGUI:
 
         tcpip_message = enable_tcpip(serial, port).strip()
         if not route_ip:
-            route_ip = self._route_ip_for_serial(serial)
+            route_ip = self._route_ip_for_serial_with_retries(
+                serial,
+                attempts=WIRELESS_ROUTE_IP_RETRY_ATTEMPTS,
+                delay_seconds=WIRELESS_ROUTE_IP_RETRY_DELAY_SECONDS,
+            )
         target = ""
         if route_ip:
             target = f"{route_ip}:{port}"
@@ -1021,6 +1028,22 @@ class LogcatToolGUI:
             return get_device_route_ip(serial).strip()
         except Exception:
             return ""
+
+    def _route_ip_for_serial_with_retries(
+        self,
+        serial: str,
+        *,
+        attempts: int,
+        delay_seconds: float,
+    ) -> str:
+        max_attempts = max(1, attempts)
+        for attempt in range(max_attempts):
+            route_ip = self._route_ip_for_serial(serial)
+            if route_ip:
+                return route_ip
+            if attempt + 1 < max_attempts and delay_seconds > 0:
+                time.sleep(delay_seconds)
+        return ""
 
     def _usb_route_ip_matches_tcp_target(self, route_ip: str, target: str) -> bool:
         if not route_ip:

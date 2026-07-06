@@ -350,6 +350,21 @@ def test_schedule_reconnect_ignores_timer_schedule_failure_after_close() -> None
     assert controller.reconnect_target_serial == "USB123"
 
 
+def test_schedule_reconnect_exhaustion_clears_retry_state() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = "USB123"
+    controller.reconnect_target_serial = "USB123"
+    controller.status.reconnect_attempt = gui.MAX_RECONNECT_ATTEMPTS
+
+    gui.LogcatToolGUI._schedule_reconnect(controller)
+
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == "重连次数已用尽。"
+
+
 def test_poll_stream_ignores_reschedule_failure_after_close() -> None:
     controller = make_controller()
     controller.root = DestroyedRoot()

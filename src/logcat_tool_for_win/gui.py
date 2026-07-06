@@ -1109,6 +1109,8 @@ class LogcatToolGUI:
             return
         if self.status.reconnect_attempt >= MAX_RECONNECT_ATTEMPTS:
             self.status.stream_state = "failed"
+            self.status.reconnect_attempt = 0
+            self.reconnect_target_serial = ""
             self.status.last_error = "重连次数已用尽。"
             self._update_status()
             return

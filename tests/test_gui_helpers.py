@@ -4,6 +4,8 @@ from collections import deque
 import queue
 from types import SimpleNamespace
 
+import pytest
+
 import logcat_tool_for_win.gui as gui
 from logcat_tool_for_win.models import (
     AppStatus,
@@ -96,6 +98,16 @@ class DummyRoot:
 
     def after(self, delay: int, callback: object) -> None:
         self.after_calls.append((delay, callback))
+
+
+class DestroyedRoot:
+    def after(self, delay: int, callback: object) -> None:
+        raise RuntimeError("application has been destroyed")
+
+
+class BrokenAfterRoot:
+    def after(self, delay: int, callback: object) -> None:
+        raise RuntimeError("unexpected scheduler failure")
 
 
 class DummyText:
@@ -242,6 +254,34 @@ def test_run_background_task_schedules_result_on_tk_thread(monkeypatch) -> None:
 
     assert successes == ["ok"]
     assert errors == []
+
+
+def test_run_background_task_ignores_ui_schedule_failure_after_close(monkeypatch) -> None:
+    controller = make_controller()
+    controller.root = DestroyedRoot()
+    successes: list[str] = []
+    errors: list[Exception] = []
+
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+
+    gui.LogcatToolGUI._run_background_task(
+        controller,
+        "正在执行...",
+        lambda: "ok",
+        successes.append,
+        errors.append,
+    )
+
+    assert successes == []
+    assert errors == []
+
+
+def test_schedule_ui_callback_reraises_unexpected_schedule_errors() -> None:
+    controller = make_controller()
+    controller.root = BrokenAfterRoot()
+
+    with pytest.raises(RuntimeError, match="unexpected scheduler failure"):
+        gui.LogcatToolGUI._schedule_ui_callback(controller, 0, lambda: None)
 
 
 def test_poll_stream_ignores_late_line_events_after_stop() -> None:

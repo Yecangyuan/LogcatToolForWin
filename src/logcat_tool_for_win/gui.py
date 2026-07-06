@@ -488,11 +488,21 @@ class LogcatToolGUI:
             try:
                 result = action()
             except Exception as exc:
-                self.root.after(0, lambda error=exc: on_error(error))
+                self._schedule_ui_callback(0, lambda error=exc: on_error(error))
             else:
-                self.root.after(0, lambda value=result: on_success(value))
+                self._schedule_ui_callback(0, lambda value=result: on_success(value))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _schedule_ui_callback(self, delay: int, callback: Callable[[], None]) -> bool:
+        try:
+            self.root.after(delay, callback)
+        except Exception as exc:
+            message = str(exc).lower()
+            if "destroyed" in message or "can't invoke" in message or "invalid command" in message:
+                return False
+            raise
+        return True
 
     def _refresh_preset_choices(self) -> None:
         names = sorted(self.named_presets)

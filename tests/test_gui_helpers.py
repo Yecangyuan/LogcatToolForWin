@@ -950,6 +950,37 @@ def test_start_stream_warns_when_adb_is_not_ready(monkeypatch) -> None:
     assert controller.status.stream_state == "idle"
 
 
+def test_start_stream_fails_reconnect_when_adb_is_not_ready(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    warnings: list[tuple[str, str]] = []
+
+    controller.status.adb_ready = False
+    controller.status.stream_state = "reconnecting"
+    controller.status.reconnect_attempt = 1
+    controller.status.active_device_serial = selected_device.serial
+    controller.reconnect_target_serial = selected_device.serial
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: None
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert warnings == [("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")]
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == "重连设备不可用：ADB 不可用。"
+
+
 def test_start_stream_clears_retry_state_when_reconnect_launch_fails(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")

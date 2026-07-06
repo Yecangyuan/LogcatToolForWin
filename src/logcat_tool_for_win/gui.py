@@ -897,6 +897,8 @@ class LogcatToolGUI:
     def start_stream(self) -> None:
         if not self.status.adb_ready:
             messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
+            if self.status.stream_state == "reconnecting":
+                self._fail_retry_stream("ADB 不可用。")
             return
 
         try:

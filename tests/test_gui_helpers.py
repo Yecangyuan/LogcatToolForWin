@@ -284,6 +284,29 @@ def test_schedule_ui_callback_reraises_unexpected_schedule_errors() -> None:
         gui.LogcatToolGUI._schedule_ui_callback(controller, 0, lambda: None)
 
 
+def test_schedule_reconnect_ignores_timer_schedule_failure_after_close() -> None:
+    controller = make_controller()
+    controller.root = DestroyedRoot()
+    controller.status.stream_state = "streaming"
+    controller.status.active_device_serial = "USB123"
+    controller.reconnect_target_serial = ""
+
+    gui.LogcatToolGUI._schedule_reconnect(controller)
+
+    assert controller.status.stream_state == "reconnecting"
+    assert controller.status.reconnect_attempt == 1
+    assert controller.reconnect_target_serial == "USB123"
+
+
+def test_poll_stream_ignores_reschedule_failure_after_close() -> None:
+    controller = make_controller()
+    controller.root = DestroyedRoot()
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert controller.status.queue_depth == 0
+
+
 def test_poll_stream_ignores_late_line_events_after_stop() -> None:
     controller = make_controller()
     controller.status.stream_state = "idle"

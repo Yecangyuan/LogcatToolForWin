@@ -923,7 +923,7 @@ class LogcatToolGUI:
         if not self.status.last_error:
             self.status.last_error = "日志流意外停止。"
         self._update_status()
-        self.root.after(RECONNECT_DELAY_MS, self._retry_stream)
+        self._schedule_ui_callback(RECONNECT_DELAY_MS, self._retry_stream)
 
     def _retry_stream(self) -> None:
         target_serial = getattr(self, "reconnect_target_serial", "") or self.status.active_device_serial
@@ -1004,7 +1004,7 @@ class LogcatToolGUI:
         if status_changed:
             self._update_status()
         delay = 0 if self.status.queue_depth else QUEUE_DRAIN_MS
-        self.root.after(delay, self._poll_stream)
+        self._schedule_ui_callback(delay, self._poll_stream)
 
     def _append_entry(
         self,

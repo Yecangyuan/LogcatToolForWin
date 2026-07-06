@@ -910,10 +910,13 @@ class LogcatToolGUI:
             return
 
         if device.state != "device":
+            message = f"当前设备状态为 {device.state}，请先选择已就绪的设备。"
             messagebox.showwarning(
                 "设备未就绪",
-                f"当前设备状态为 {device.state}，请先选择已就绪的设备。",
+                message,
             )
+            if self.status.stream_state == "reconnecting":
+                self._fail_retry_stream(message)
             return
 
         stop_error = self._stop_active_session(manual=True)

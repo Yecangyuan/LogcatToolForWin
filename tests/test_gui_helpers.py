@@ -774,6 +774,27 @@ def test_manual_refresh_invalidates_pending_debounced_filter_refresh() -> None:
     assert renders == ["render"]
 
 
+def test_highlight_refresh_invalidates_pending_debounced_filter_refresh() -> None:
+    controller = make_controller()
+    visible_entry = make_entry("visible line")
+    controller.visible_lines.extend([visible_entry])
+    controller._current_highlight_rules = lambda: [
+        HighlightRule(name="line", pattern="line", foreground="#fff")
+    ]
+    renders: list[str] = []
+    controller._render_visible = lambda: renders.append("render")
+
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+    gui.LogcatToolGUI._refresh_highlight_entries(controller)
+
+    assert renders == ["render"]
+
+    _delay, callback = controller.root.after_calls[0]
+    callback()
+
+    assert renders == ["render"]
+
+
 def test_load_named_preset_batches_filter_refreshes() -> None:
     controller = make_controller()
     refreshes: list[str] = []

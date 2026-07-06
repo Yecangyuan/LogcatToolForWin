@@ -1377,6 +1377,7 @@ class LogcatToolGUI:
         self._render_visible()
 
     def _refresh_highlight_entries(self) -> None:
+        self._invalidate_pending_filter_refreshes()
         rules = self._current_highlight_rules()
         self.filters = self._current_filters()
         self.highlight_rules = rules

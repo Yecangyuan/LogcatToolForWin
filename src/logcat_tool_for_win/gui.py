@@ -1151,6 +1151,7 @@ class LogcatToolGUI:
     def _handle_retry_stream_refresh_error(self, exc: Exception) -> None:
         if self.manual_stop or self.status.stream_state != "reconnecting":
             return
+        self._handle_refresh_devices_error(exc)
         self._fail_retry_stream(str(exc).strip())
 
     def _fail_retry_stream(self, refresh_error: str = "") -> None:

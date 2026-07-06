@@ -1601,6 +1601,10 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
 def test_retry_stream_preserves_refresh_failure_reason() -> None:
     controller = make_controller()
     captured: dict[str, object] = {}
+    stale_target = make_device("target-serial")
+    controller.devices = [stale_target]
+    controller.device_var.set(gui.device_label(stale_target))
+    controller.status.adb_ready = True
     controller.reconnect_target_serial = "target-serial"
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = "target-serial"
@@ -1618,6 +1622,7 @@ def test_retry_stream_preserves_refresh_failure_reason() -> None:
     captured["on_error"](RuntimeError("adb unavailable"))
 
     assert controller.status.stream_state == "failed"
+    assert controller.status.adb_ready is False
     assert "重连设备不可用" in controller.status.last_error
     assert "adb unavailable" in controller.status.last_error
 

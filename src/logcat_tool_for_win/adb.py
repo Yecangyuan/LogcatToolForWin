@@ -63,11 +63,12 @@ def build_adb_process_kwargs(
     bufsize: Optional[int] = None,
     close_fds: Optional[bool] = None,
     hide_window: bool = True,
+    merge_stderr: bool = False,
 ) -> dict[str, object]:
     run_kwargs: dict[str, object] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.PIPE,
-        "stderr": subprocess.PIPE,
+        "stderr": subprocess.STDOUT if merge_stderr else subprocess.PIPE,
         "text": True,
     }
     if timeout is not None:
@@ -91,6 +92,7 @@ def iter_adb_process_kwargs(
     *,
     timeout: Optional[float] = None,
     bufsize: Optional[int] = None,
+    merge_stderr: bool = False,
 ) -> Iterator[dict[str, object]]:
     for close_fds, hide_window in ADB_LAUNCH_OPTIONS:
         yield build_adb_process_kwargs(
@@ -98,6 +100,7 @@ def iter_adb_process_kwargs(
             bufsize=bufsize,
             close_fds=close_fds,
             hide_window=hide_window,
+            merge_stderr=merge_stderr,
         )
 
 
@@ -271,6 +274,8 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
     command = [str(adb_path), *args]
 
     launch_kwargs = list(iter_adb_process_kwargs(timeout=timeout))
+    if _is_windows():
+        launch_kwargs.extend(iter_adb_process_kwargs(timeout=timeout, merge_stderr=True))
     for attempt_index, process_kwargs in enumerate(launch_kwargs):
         try:
             result = subprocess.run(
@@ -289,7 +294,9 @@ def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProce
                 continue
             raise ADBCommandError(f"无法启动 adb：{exc}") from exc
     if result.returncode != 0:
-        message_parts = [part for part in (result.stderr.strip(), result.stdout.strip()) if part]
+        stdout_text = (result.stdout or "").strip()
+        stderr_text = (result.stderr or "").strip()
+        message_parts = [part for part in (stderr_text, stdout_text) if part]
         message = "\n".join(message_parts) or f"adb 退出，代码：{result.returncode}"
         raise ADBCommandError(message)
     return result

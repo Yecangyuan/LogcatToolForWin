@@ -74,6 +74,7 @@ WARN = "#FB923C"
 ERROR = "#F87171"
 HIGHLIGHT_TAG_PREFIX = "highlight::"
 WIRELESS_ADB_BUTTON_LABEL = "USB 开启无线"
+WIRELESS_ADB_ERROR_TITLE = f"{WIRELESS_ADB_BUTTON_LABEL}失败"
 STREAM_STATE_LABELS = {
     "idle": "空闲",
     "streaming": "采集中",
@@ -709,7 +710,7 @@ class LogcatToolGUI:
 
     def _handle_wireless_adb_error(self, exc: Exception) -> None:
         message = self._format_wireless_adb_error_message(exc)
-        messagebox.showerror("开启无线失败", message)
+        messagebox.showerror(WIRELESS_ADB_ERROR_TITLE, message)
         self.status.last_error = message
         self._update_status()
 

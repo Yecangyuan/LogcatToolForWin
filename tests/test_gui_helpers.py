@@ -1704,7 +1704,7 @@ def test_handle_wireless_adb_error_explains_usb_checks(monkeypatch) -> None:
 
     assert errors == [
         (
-            "开启无线失败",
+            "USB 开启无线失败",
             "device offline\n\n"
             "请确认当前选择的是已授权 USB 调试的设备，并保持数据线连接稳定后再试。",
         )

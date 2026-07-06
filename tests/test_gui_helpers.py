@@ -833,6 +833,7 @@ def test_manual_refresh_invalidates_pending_debounced_filter_refresh() -> None:
     gui.LogcatToolGUI._refresh_visible_entries(controller)
 
     assert renders == ["render"]
+    assert controller.root.after_cancel_calls == ["after-1"]
 
     _delay, callback = controller.root.after_calls[0]
     callback()
@@ -854,6 +855,7 @@ def test_highlight_refresh_invalidates_pending_debounced_filter_refresh() -> Non
     gui.LogcatToolGUI._refresh_highlight_entries(controller)
 
     assert renders == ["render"]
+    assert controller.root.after_cancel_calls == ["after-1"]
 
     _delay, callback = controller.root.after_calls[0]
     callback()

@@ -545,6 +545,9 @@ class LogcatToolGUI:
         self._refresh_visible_entries()
 
     def _invalidate_pending_filter_refreshes(self) -> None:
+        pending_callback_id = getattr(self, "_pending_filter_refresh_id", None)
+        if pending_callback_id is not None:
+            self._cancel_ui_callback(pending_callback_id)
         self._filter_refresh_version = getattr(self, "_filter_refresh_version", 0) + 1
         self._pending_filter_refresh_id = None
 

@@ -33,6 +33,7 @@ from logcat_tool_for_win.adb import (
     restart_server,
     resolve_adb_path,
     set_manual_adb_path,
+    validate_tcp_port,
 )
 from logcat_tool_for_win.config import (
     QUEUE_DRAIN_MS,
@@ -856,8 +857,7 @@ class LogcatToolGUI:
 
         raw_target = self.connect_var.get().strip()
         try:
-            port = extract_tcp_port(raw_target, DEFAULT_TCP_PORT)
-            preferred_target = normalize_tcp_target(raw_target) if raw_target else ""
+            port, preferred_target = self._resolve_wireless_connect_preferences(raw_target)
         except Exception as exc:
             messagebox.showwarning("TCP 端口无效", str(exc))
             return
@@ -869,6 +869,28 @@ class LogcatToolGUI:
             self._handle_wireless_adb_error,
             task_key=DEVICE_SYNC_TASK_KEY,
         )
+
+    def _resolve_wireless_connect_preferences(self, raw_target: str) -> tuple[int, str]:
+        stripped = raw_target.strip()
+        if not stripped:
+            return DEFAULT_TCP_PORT, ""
+        if ":" not in stripped:
+            if stripped.isdigit():
+                return validate_tcp_port(int(stripped)), ""
+            try:
+                return DEFAULT_TCP_PORT, normalize_tcp_target(stripped)
+            except ValueError:
+                return DEFAULT_TCP_PORT, ""
+
+        host_text, port_text = (part.strip() for part in stripped.rsplit(":", 1))
+        try:
+            port = validate_tcp_port(int(port_text))
+        except ValueError as exc:
+            raise ValueError(f"无效的 TCP 端口：{port_text}") from exc
+        try:
+            return port, normalize_tcp_target(f"{host_text}:{port}")
+        except ValueError:
+            return port, ""
 
     def _prepare_wireless_adb(
         self,

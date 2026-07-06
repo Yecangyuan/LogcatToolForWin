@@ -810,6 +810,22 @@ def test_stop_stream_surfaces_stop_failures_instead_of_claiming_idle() -> None:
     assert "stop failed" in controller.status.last_error
 
 
+def test_stop_stream_clears_retry_state_when_stop_fails_during_reconnect() -> None:
+    controller = make_controller()
+    controller.session = FailingSession()
+    controller.status.stream_state = "reconnecting"
+    controller.status.reconnect_attempt = 2
+    controller.status.active_device_serial = "R58M12345"
+    controller.reconnect_target_serial = "R58M12345"
+
+    gui.LogcatToolGUI.stop_stream(controller)
+
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == "stop failed"
+
+
 def test_stop_active_session_retains_failed_session_ownership() -> None:
     controller = make_controller()
     original_events = controller.events

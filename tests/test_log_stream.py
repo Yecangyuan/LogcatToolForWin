@@ -186,6 +186,13 @@ def test_parse_threadtime_line_allows_colons_inside_tag() -> None:
     assert entry.message == "boot complete"
 
 
+def test_parse_threadtime_line_strips_crlf_line_endings() -> None:
+    entry = parse_threadtime_line("06-18 12:00:00.000  1234  1235 I MyApp: boot complete\r\n")
+
+    assert entry.message == "boot complete"
+    assert entry.raw_line == "06-18 12:00:00.000  1234  1235 I MyApp: boot complete"
+
+
 def test_parse_threadtime_line_returns_raw_fallback_for_unmatched_lines() -> None:
     entry = parse_threadtime_line("not a log line\n")
     assert entry.timestamp_text == ""

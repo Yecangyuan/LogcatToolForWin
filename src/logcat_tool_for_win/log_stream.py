@@ -16,7 +16,7 @@ THREADTIME_RE = re.compile(
 
 
 def parse_threadtime_line(line: str) -> LogEntry:
-    raw_line = line.rstrip("\n")
+    raw_line = line.rstrip("\r\n")
     match = THREADTIME_RE.match(raw_line)
     if match is None:
         return LogEntry(

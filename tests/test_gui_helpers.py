@@ -1807,15 +1807,22 @@ def test_save_session_state_skips_invalid_recent_target_history(monkeypatch) -> 
     assert controller.connect_combo.values == ("192.168.1.112:5555",)
 
 
-def test_restore_saved_manual_adb_path_applies_non_empty_path(monkeypatch) -> None:
+def test_restore_saved_manual_adb_path_applies_non_empty_path(monkeypatch, tmp_path: Path) -> None:
     controller = make_controller()
     captured: list[Path] = []
+    adb_path = tmp_path / "platform-tools" / "adb.exe"
+    adb_path.parent.mkdir(parents=True)
+    adb_path.write_text("adb", encoding="utf-8")
 
     monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: captured.append(path))
 
-    gui.LogcatToolGUI._restore_saved_manual_adb_path(controller, "C:/Android/platform-tools/adb.exe")
+    message = gui.LogcatToolGUI._restore_saved_manual_adb_path(
+        controller,
+        str(adb_path),
+    )
 
-    assert captured == [Path("C:/Android/platform-tools/adb.exe")]
+    assert captured == [adb_path]
+    assert message == ""
 
 
 def test_restore_saved_manual_adb_path_clears_empty_value(monkeypatch) -> None:
@@ -1824,9 +1831,24 @@ def test_restore_saved_manual_adb_path_clears_empty_value(monkeypatch) -> None:
 
     monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: captured.append(path))
 
-    gui.LogcatToolGUI._restore_saved_manual_adb_path(controller, "")
+    message = gui.LogcatToolGUI._restore_saved_manual_adb_path(controller, "")
 
     assert captured == [None]
+    assert message == ""
+
+
+def test_restore_saved_manual_adb_path_warns_and_resets_when_path_is_missing(monkeypatch) -> None:
+    controller = make_controller()
+    captured: list[object] = []
+    missing_path = Path("/tmp/missing-adb.exe")
+
+    monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: captured.append(path))
+
+    message = gui.LogcatToolGUI._restore_saved_manual_adb_path(controller, str(missing_path))
+
+    assert captured == [None]
+    assert str(missing_path) in message
+    assert "已恢复自动检测" in message
 
 
 def test_select_device_by_serial_preserves_active_stream_target() -> None:

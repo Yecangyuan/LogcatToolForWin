@@ -171,10 +171,11 @@ class LogcatToolGUI:
         ) = load_state(
             self.state_file
         )
-        self._restore_saved_manual_adb_path(manual_adb_path)
+        saved_adb_restore_message = self._restore_saved_manual_adb_path(manual_adb_path)
         self.named_presets = load_presets(self.presets_file)
         self.status = AppStatus()
         self.status.adb_path = str(resolve_adb_path())
+        self.status.last_error = saved_adb_restore_message
         self.manual_stop = True
         self.reconnect_target_serial = ""
         self.recent_targets = recent_targets[:MAX_RECENT_TARGETS]
@@ -684,9 +685,17 @@ class LogcatToolGUI:
             raw_descriptor=f"{serial}\toffline",
         )
 
-    def _restore_saved_manual_adb_path(self, manual_adb_path: str) -> None:
+    def _restore_saved_manual_adb_path(self, manual_adb_path: str) -> str:
         stripped_path = manual_adb_path.strip()
-        set_manual_adb_path(Path(stripped_path) if stripped_path else None)
+        if not stripped_path:
+            set_manual_adb_path(None)
+            return ""
+        path = Path(stripped_path)
+        if path.exists():
+            set_manual_adb_path(path)
+            return ""
+        set_manual_adb_path(None)
+        return f"保存的 ADB 路径已失效，已恢复自动检测：{path}"
 
     def _preserve_stream_target_device(
         self,

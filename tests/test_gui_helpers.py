@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from pathlib import Path
 import queue
 from types import SimpleNamespace
 
@@ -222,11 +223,13 @@ def make_controller() -> gui.LogcatToolGUI:
     controller.summary_var = DummyVar("")
     controller.device_var = DummyVar("")
     controller.connect_var = DummyVar("")
+    controller.recent_targets = []
     controller.level_var = DummyVar("V")
     controller.tag_var = DummyVar("")
     controller.keyword_var = DummyVar("")
     controller.highlight_var = DummyVar("")
     controller.device_combo = DummyCombo()
+    controller.connect_combo = DummyCombo()
     controller.preset_var = DummyVar("")
     controller.named_presets = {}
     controller.raw_lines = deque()
@@ -1227,6 +1230,70 @@ def test_connect_tcp_selects_connected_tcp_device_when_usb_was_selected(monkeypa
 
     assert controller.device_var.get() == gui.device_label(tcp_device)
     assert controller.status.active_device_serial == tcp_device.serial
+
+
+def test_handle_connect_tcp_success_updates_recent_target_history() -> None:
+    controller = make_controller()
+    current_device = make_device("192.168.1.111:5555")
+    older_device = make_device("192.168.1.112:5555")
+    controller.devices = [current_device, older_device]
+    controller.recent_targets = ["192.168.1.112:5555", "192.168.1.113:5555"]
+
+    gui.LogcatToolGUI._handle_connect_tcp_success(
+        controller,
+        (
+            "192.168.1.111:5555",
+            "connected to 192.168.1.111:5555",
+            [current_device, older_device],
+        ),
+    )
+
+    assert controller.recent_targets == [
+        "192.168.1.111:5555",
+        "192.168.1.112:5555",
+        "192.168.1.113:5555",
+    ]
+    assert controller.connect_combo.values == (
+        "192.168.1.111:5555",
+        "192.168.1.112:5555",
+        "192.168.1.113:5555",
+    )
+
+
+def test_save_session_state_persists_recent_target_history(monkeypatch) -> None:
+    controller = make_controller()
+    controller.state_file = Path("/tmp/state.json")
+    controller.filters = FilterState(minimum_level="W")
+    controller.highlight_rules = []
+    controller.connect_var.set("192.168.1.111:5555")
+    controller.recent_targets = ["192.168.1.112:5555"]
+    controller._current_filters = lambda: controller.filters
+    controller._current_highlight_rules = lambda: controller.highlight_rules
+    controller._update_status = lambda: None
+    captured: dict[str, object] = {}
+
+    def fake_save_state(path, filters, rules, recent_target, recent_targets) -> None:
+        captured["path"] = path
+        captured["filters"] = filters
+        captured["rules"] = rules
+        captured["recent_target"] = recent_target
+        captured["recent_targets"] = recent_targets
+
+    monkeypatch.setattr(gui, "save_state", fake_save_state)
+    monkeypatch.setattr(gui, "messagebox", SimpleNamespace(showwarning=lambda *args: None, showerror=lambda *args: None))
+
+    gui.LogcatToolGUI.save_session_state(controller)
+
+    assert captured["path"] == controller.state_file
+    assert captured["recent_target"] == "192.168.1.111:5555"
+    assert captured["recent_targets"] == [
+        "192.168.1.111:5555",
+        "192.168.1.112:5555",
+    ]
+    assert controller.connect_combo.values == (
+        "192.168.1.111:5555",
+        "192.168.1.112:5555",
+    )
 
 
 def test_select_device_by_serial_preserves_active_stream_target() -> None:

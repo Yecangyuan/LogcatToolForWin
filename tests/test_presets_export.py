@@ -18,13 +18,20 @@ def test_save_and_load_state_round_trip(tmp_path: Path) -> None:
     )
     rules = [HighlightRule(name="Crash", pattern="crash", foreground="#ff6b6b")]
 
-    save_state(state_file, filters, rules, "10.0.0.5:5555")
-    loaded_filters, loaded_rules, recent_target = load_state(state_file)
+    save_state(
+        state_file,
+        filters,
+        rules,
+        "10.0.0.5:5555",
+        ["10.0.0.5:5555", "10.0.0.8:5555"],
+    )
+    loaded_filters, loaded_rules, recent_target, recent_targets = load_state(state_file)
 
     assert loaded_filters.minimum_level == "W"
     assert loaded_filters.tag_filters == ("MyApp",)
     assert loaded_rules[0].name == "Crash"
     assert recent_target == "10.0.0.5:5555"
+    assert recent_targets == ["10.0.0.5:5555", "10.0.0.8:5555"]
 
 
 def test_save_and_load_named_presets_round_trip(tmp_path: Path) -> None:
@@ -112,11 +119,12 @@ def test_load_state_returns_defaults_for_bad_payload(tmp_path: Path) -> None:
     state_file = tmp_path / "state.json"
     state_file.write_text("{not-json", encoding="utf-8")
 
-    loaded_filters, loaded_rules, recent_target = load_state(state_file)
+    loaded_filters, loaded_rules, recent_target, recent_targets = load_state(state_file)
 
     assert loaded_filters == FilterState()
     assert loaded_rules == []
     assert recent_target == ""
+    assert recent_targets == []
 
 
 def test_load_state_skips_invalid_highlight_rules(tmp_path: Path) -> None:
@@ -136,12 +144,13 @@ def test_load_state_skips_invalid_highlight_rules(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    loaded_filters, loaded_rules, recent_target = load_state(state_file)
+    loaded_filters, loaded_rules, recent_target, recent_targets = load_state(state_file)
 
     assert loaded_filters.minimum_level == "I"
     assert loaded_filters.match_only is False
     assert [rule.name for rule in loaded_rules] == ["Good"]
     assert recent_target == ""
+    assert recent_targets == []
 
 
 def test_load_state_normalizes_loaded_filter_values(tmp_path: Path) -> None:
@@ -160,11 +169,43 @@ def test_load_state_normalizes_loaded_filter_values(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    loaded_filters, _loaded_rules, recent_target = load_state(state_file)
+    loaded_filters, _loaded_rules, recent_target, recent_targets = load_state(state_file)
 
     assert loaded_filters.minimum_level == "V"
     assert loaded_filters.tag_filters == ("ActivityManager", "MyApp")
     assert recent_target == "192.168.1.111:5555"
+    assert recent_targets == ["192.168.1.111:5555"]
+
+
+def test_load_state_normalizes_recent_target_history(tmp_path: Path) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "filters": {},
+                "highlight_rules": [],
+                "recent_target": " 192.168.1.111:5555 ",
+                "recent_targets": [
+                    "",
+                    " 192.168.1.112:5555 ",
+                    "192.168.1.111:5555",
+                    None,
+                    "192.168.1.112:5555",
+                    "192.168.1.113",
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _loaded_filters, _loaded_rules, recent_target, recent_targets = load_state(state_file)
+
+    assert recent_target == "192.168.1.111:5555"
+    assert recent_targets == [
+        "192.168.1.111:5555",
+        "192.168.1.112:5555",
+        "192.168.1.113",
+    ]
 
 
 def test_export_lines_writes_text_file_and_creates_parent_directories(tmp_path: Path) -> None:

@@ -68,6 +68,38 @@ def _normalize_highlight_patterns(value: object) -> tuple[str, ...]:
     return tuple(patterns)
 
 
+def _coerce_recent_target(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
+def _normalize_recent_targets(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+
+    recent_targets: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        target = _coerce_recent_target(item)
+        if not target or target in seen:
+            continue
+        seen.add(target)
+        recent_targets.append(target)
+    return recent_targets
+
+
+def _merge_recent_targets(recent_target: str, recent_targets: object) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for target in (_coerce_recent_target(recent_target), *_normalize_recent_targets(recent_targets)):
+        if not target or target in seen:
+            continue
+        seen.add(target)
+        merged.append(target)
+    return merged
+
+
 def _named_preset_to_payload(preset: NamedPreset) -> dict[str, object]:
     return {
         "filters": _filters_to_payload(preset.filters),
@@ -171,7 +203,9 @@ def save_state(
     filters: FilterState,
     rules: list[HighlightRule],
     recent_target: str,
+    recent_targets: object = (),
 ) -> None:
+    merged_recent_targets = _merge_recent_targets(recent_target, recent_targets)
     payload = {
         "filters": _filters_to_payload(filters),
         "highlight_rules": [
@@ -184,24 +218,27 @@ def save_state(
             }
             for rule in rules
         ],
-        "recent_target": recent_target,
+        "recent_target": merged_recent_targets[0] if merged_recent_targets else "",
+        "recent_targets": merged_recent_targets,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def load_state(path: Path) -> tuple[FilterState, list[HighlightRule], str]:
+def load_state(path: Path) -> tuple[FilterState, list[HighlightRule], str, list[str]]:
     if not path.exists():
-        return FilterState(), [], ""
+        return FilterState(), [], "", []
 
     try:
         payload = _read_json_object(path)
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return FilterState(), [], ""
+        return FilterState(), [], "", []
 
     filters = _filters_from_payload(payload.get("filters", {}))
     rules = _highlight_rules_from_payload(payload.get("highlight_rules", []))
-    recent_target = payload.get("recent_target", "")
-    if not isinstance(recent_target, str):
-        recent_target = ""
-    return filters, rules, recent_target
+    recent_targets = _merge_recent_targets(
+        payload.get("recent_target", ""),
+        payload.get("recent_targets", []),
+    )
+    recent_target = recent_targets[0] if recent_targets else ""
+    return filters, rules, recent_target, recent_targets

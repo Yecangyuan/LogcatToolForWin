@@ -61,6 +61,7 @@ from logcat_tool_for_win.presets import load_presets, load_state, save_preset, s
 MAX_RECONNECT_ATTEMPTS = 3
 RECONNECT_DELAY_MS = 2_000
 MAX_EVENTS_PER_TICK = 500
+MAX_RECENT_TARGETS = 8
 T = TypeVar("T")
 
 BG = "#0F172A"
@@ -151,11 +152,14 @@ class LogcatToolGUI:
         self.session: Optional[LogcatSession] = None
         self.raw_lines: deque[LogEntry] = deque(maxlen=RAW_LOG_CAP)
         self.visible_lines: deque[LogEntry] = deque(maxlen=VISIBLE_LOG_CAP)
-        self.filters, self.highlight_rules, recent_target = load_state(self.state_file)
+        self.filters, self.highlight_rules, recent_target, recent_targets = load_state(
+            self.state_file
+        )
         self.named_presets = load_presets(self.presets_file)
         self.status = AppStatus()
         self.manual_stop = True
         self.reconnect_target_serial = ""
+        self.recent_targets = recent_targets[:MAX_RECENT_TARGETS]
         self._configured_highlight_styles: dict[str, tuple[str, str]] = {}
         self._filter_refresh_suspended = False
         self._filter_trace_ids: list[tuple[tk.Variable, str]] = []
@@ -249,13 +253,14 @@ class LogcatToolGUI:
         ttk.Button(toolbar, text="刷新", style="App.TButton", command=self.refresh_devices_async).pack(
             side=tk.LEFT, padx=4
         )
-        self.connect_entry = ttk.Entry(
+        self.connect_combo = ttk.Combobox(
             toolbar,
             textvariable=self.connect_var,
-            width=18,
-            style="App.TEntry",
+            width=20,
+            style="App.TCombobox",
         )
-        self.connect_entry.pack(side=tk.LEFT, padx=8)
+        self.connect_combo.pack(side=tk.LEFT, padx=8)
+        self._refresh_connect_choices()
         ttk.Button(toolbar, text="连接", style="App.TButton", command=self.connect_tcp).pack(
             side=tk.LEFT, padx=4
         )
@@ -621,6 +626,7 @@ class LogcatToolGUI:
 
     def _handle_connect_tcp_success(self, result: tuple[str, str, list[DeviceInfo]]) -> None:
         target, message, devices = result
+        self._remember_connect_target(target)
         self._apply_devices(devices)
         self._select_device_by_serial(target)
         self.status.last_error = message or f"已连接 {target}"
@@ -692,6 +698,7 @@ class LogcatToolGUI:
     def _handle_wireless_adb_success(self, result: tuple[str, str, list[DeviceInfo]]) -> None:
         target, message, devices = result
         if target:
+            self._remember_connect_target(target)
             self.connect_var.set(target)
         self._apply_devices(devices)
         if target:
@@ -722,6 +729,21 @@ class LogcatToolGUI:
             f"{message}\n\n"
             "请确认当前选择的是已授权 USB 调试的设备，并保持数据线连接稳定后再试。"
         )
+
+    def _remember_connect_target(self, target: str) -> None:
+        normalized_target = target.strip()
+        if not normalized_target:
+            return
+        self.recent_targets = [
+            normalized_target,
+            *[item for item in self.recent_targets if item != normalized_target],
+        ][:MAX_RECENT_TARGETS]
+        self._refresh_connect_choices()
+
+    def _refresh_connect_choices(self) -> None:
+        connect_combo = getattr(self, "connect_combo", None)
+        if connect_combo is not None:
+            connect_combo["values"] = tuple(self.recent_targets)
 
     def _current_device(self) -> DeviceInfo:
         current = self.device_var.get()
@@ -919,12 +941,15 @@ class LogcatToolGUI:
     def save_session_state(self) -> None:
         self.filters = self._current_filters()
         self.highlight_rules = self._current_highlight_rules()
+        recent_target = self.connect_var.get().strip()
+        self._remember_connect_target(recent_target)
         try:
             save_state(
                 self.state_file,
                 self.filters,
                 self.highlight_rules,
-                self.connect_var.get().strip(),
+                recent_target,
+                self.recent_targets,
             )
             self.status.last_error = "会话状态已保存。"
         except Exception as exc:

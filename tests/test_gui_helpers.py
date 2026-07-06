@@ -216,6 +216,7 @@ def make_controller() -> gui.LogcatToolGUI:
     controller = gui.LogcatToolGUI.__new__(gui.LogcatToolGUI)
     controller.status = AppStatus()
     controller.manual_stop = False
+    controller._background_task_versions = {}
     controller._filter_refresh_suspended = False
     controller.events = queue.Queue()
     controller.root = DummyRoot()
@@ -289,6 +290,41 @@ def test_run_background_task_ignores_ui_schedule_failure_after_close(monkeypatch
     )
 
     assert successes == []
+    assert errors == []
+
+
+def test_run_background_task_ignores_stale_result_for_same_task_key(monkeypatch) -> None:
+    controller = make_controller()
+    successes: list[str] = []
+    errors: list[Exception] = []
+
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+
+    gui.LogcatToolGUI._run_background_task(
+        controller,
+        "第一次执行...",
+        lambda: "old",
+        successes.append,
+        errors.append,
+        task_key="device-sync",
+    )
+    gui.LogcatToolGUI._run_background_task(
+        controller,
+        "第二次执行...",
+        lambda: "new",
+        successes.append,
+        errors.append,
+        task_key="device-sync",
+    )
+
+    assert len(controller.root.after_calls) == 2
+
+    _first_delay, first_callback = controller.root.after_calls[0]
+    _second_delay, second_callback = controller.root.after_calls[1]
+    first_callback()
+    second_callback()
+
+    assert successes == ["new"]
     assert errors == []
 
 
@@ -912,7 +948,7 @@ def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
     device = make_device("R58M12345")
     captured: dict[str, object] = {}
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -950,7 +986,7 @@ def test_connect_tcp_schedules_connect_and_refresh(monkeypatch) -> None:
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -982,7 +1018,7 @@ def test_connect_tcp_defaults_to_5555_when_port_is_omitted(monkeypatch) -> None:
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1014,7 +1050,7 @@ def test_connect_tcp_retries_direct_tcp_connection(monkeypatch) -> None:
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1048,7 +1084,7 @@ def test_connect_tcp_prepares_selected_usb_device_before_connecting_target(monke
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1083,7 +1119,7 @@ def test_connect_tcp_does_not_fall_back_to_selected_usb_device_after_direct_conn
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1121,7 +1157,7 @@ def test_connect_tcp_does_not_fall_back_to_only_ready_usb_device_without_manual_
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1157,7 +1193,7 @@ def test_connect_tcp_keeps_connected_target_when_device_refresh_fails(monkeypatc
     controller.connect_var.set(target)
     captured: dict[str, object] = {}
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1226,7 +1262,7 @@ def test_connect_tcp_selects_connected_tcp_device_when_usb_was_selected(monkeypa
     controller.connect_var.set(tcp_device.serial)
     captured: dict[str, object] = {}
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1393,7 +1429,7 @@ def test_clear_device_logcat_schedules_background_clear(monkeypatch) -> None:
 
     controller._current_device = lambda: selected_device
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1448,7 +1484,7 @@ def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
 
     controller.stop_stream = lambda: calls.append(("stop", None))
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1479,7 +1515,7 @@ def test_restart_adb_aborts_when_stream_stop_fails(monkeypatch) -> None:
         controller.status.stream_state = "failed"
         controller.status.last_error = "stop failed"
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         calls.append(("background", message))
 
     controller.stop_stream = fake_stop_stream
@@ -1509,7 +1545,7 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = other_device.serial
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1534,7 +1570,7 @@ def test_retry_stream_preserves_refresh_failure_reason() -> None:
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = "target-serial"
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1561,7 +1597,7 @@ def test_retry_stream_does_not_restart_from_stale_devices_after_refresh_failure(
     controller.status.active_device_serial = stale_target.serial
     started: list[str] = []
 
-    def fake_run_background_task(message, action, on_success, on_error) -> None:
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
         captured["on_success"] = on_success
@@ -1590,7 +1626,9 @@ def test_enable_wireless_adb_enables_tcpip_and_connects_discovered_ip(monkeypatc
     controller.device_var.set(gui.device_label(selected_device))
     controller.status.active_device_serial = selected_device.serial
     controller._current_device = lambda: selected_device
-    controller._run_background_task = lambda _message, action, on_success, _on_error: on_success(action())
+    controller._run_background_task = (
+        lambda _message, action, on_success, _on_error, task_key=None: on_success(action())
+    )
     controller._update_status = lambda: calls.append(("status", None))
 
     def fake_get_device_route_ip(serial: str) -> str:
@@ -1659,7 +1697,9 @@ def test_enable_wireless_adb_keeps_connected_target_when_device_refresh_fails(mo
     controller.device_var.set(gui.device_label(selected_device))
     controller.status.active_device_serial = selected_device.serial
     controller._current_device = lambda: selected_device
-    controller._run_background_task = lambda _message, action, on_success, _on_error: on_success(action())
+    controller._run_background_task = (
+        lambda _message, action, on_success, _on_error, task_key=None: on_success(action())
+    )
 
     monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.111")
     monkeypatch.setattr(gui, "enable_tcpip", lambda serial, port: "restarting in TCP mode port: 5555\n")
@@ -1687,7 +1727,9 @@ def test_enable_wireless_adb_explains_manual_connect_when_ip_is_unknown(monkeypa
     controller.status.adb_ready = True
 
     controller._current_device = lambda: selected_device
-    controller._run_background_task = lambda _message, action, on_success, _on_error: on_success(action())
+    controller._run_background_task = (
+        lambda _message, action, on_success, _on_error, task_key=None: on_success(action())
+    )
 
     monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "")
     monkeypatch.setattr(gui, "enable_tcpip", lambda serial, port: "restarting in TCP mode port: 5555\n")

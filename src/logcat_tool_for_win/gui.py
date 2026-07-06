@@ -62,6 +62,7 @@ MAX_RECONNECT_ATTEMPTS = 3
 RECONNECT_DELAY_MS = 2_000
 MAX_EVENTS_PER_TICK = 500
 MAX_RECENT_TARGETS = 8
+DEVICE_SYNC_TASK_KEY = "device-sync"
 T = TypeVar("T")
 
 BG = "#0F172A"
@@ -163,6 +164,7 @@ class LogcatToolGUI:
         self.reconnect_target_serial = ""
         self.recent_targets = recent_targets[:MAX_RECENT_TARGETS]
         self._configured_highlight_styles: dict[str, tuple[str, str]] = {}
+        self._background_task_versions: dict[str, int] = {}
         self._filter_refresh_suspended = False
         self._filter_trace_ids: list[tuple[tk.Variable, str]] = []
 
@@ -503,19 +505,80 @@ class LogcatToolGUI:
         action: Callable[[], T],
         on_success: Callable[[T], None],
         on_error: Callable[[Exception], None],
+        task_key: Optional[str] = None,
     ) -> None:
         self.status.last_error = pending_message
         self._update_status()
+        task_version = self._advance_background_task_version(task_key)
 
         def worker() -> None:
             try:
                 result = action()
             except Exception as exc:
-                self._schedule_ui_callback(0, lambda error=exc: on_error(error))
+                self._schedule_ui_callback(
+                    0,
+                    lambda error=exc, key=task_key, version=task_version: self._deliver_background_error(
+                        key,
+                        version,
+                        error,
+                        on_error,
+                    ),
+                )
             else:
-                self._schedule_ui_callback(0, lambda value=result: on_success(value))
+                self._schedule_ui_callback(
+                    0,
+                    lambda value=result, key=task_key, version=task_version: self._deliver_background_success(
+                        key,
+                        version,
+                        value,
+                        on_success,
+                    ),
+                )
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _advance_background_task_version(self, task_key: Optional[str]) -> Optional[int]:
+        if not task_key:
+            return None
+        versions = getattr(self, "_background_task_versions", None)
+        if versions is None:
+            versions = {}
+            self._background_task_versions = versions
+        version = versions.get(task_key, 0) + 1
+        versions[task_key] = version
+        return version
+
+    def _is_current_background_task(
+        self,
+        task_key: Optional[str],
+        task_version: Optional[int],
+    ) -> bool:
+        if not task_key or task_version is None:
+            return True
+        versions = getattr(self, "_background_task_versions", {})
+        return versions.get(task_key) == task_version
+
+    def _deliver_background_success(
+        self,
+        task_key: Optional[str],
+        task_version: Optional[int],
+        result: T,
+        on_success: Callable[[T], None],
+    ) -> None:
+        if not self._is_current_background_task(task_key, task_version):
+            return
+        on_success(result)
+
+    def _deliver_background_error(
+        self,
+        task_key: Optional[str],
+        task_version: Optional[int],
+        exc: Exception,
+        on_error: Callable[[Exception], None],
+    ) -> None:
+        if not self._is_current_background_task(task_key, task_version):
+            return
+        on_error(exc)
 
     def _schedule_ui_callback(self, delay: int, callback: Callable[[], None]) -> bool:
         try:
@@ -590,6 +653,7 @@ class LogcatToolGUI:
             list_devices,
             self._apply_devices,
             self._handle_refresh_devices_error,
+            task_key=DEVICE_SYNC_TASK_KEY,
         )
 
     def connect_tcp(self) -> None:
@@ -624,6 +688,7 @@ class LogcatToolGUI:
             action,
             self._handle_connect_tcp_success,
             self._handle_connect_tcp_error,
+            task_key=DEVICE_SYNC_TASK_KEY,
         )
 
     def _handle_connect_tcp_success(self, result: tuple[str, str, list[DeviceInfo]]) -> None:
@@ -672,6 +737,7 @@ class LogcatToolGUI:
             lambda: self._prepare_wireless_adb(device.serial, port),
             self._handle_wireless_adb_success,
             self._handle_wireless_adb_error,
+            task_key=DEVICE_SYNC_TASK_KEY,
         )
 
     def _prepare_wireless_adb(self, serial: str, port: int) -> tuple[str, str, list[DeviceInfo]]:
@@ -885,6 +951,7 @@ class LogcatToolGUI:
             self._restart_adb_and_list_devices,
             self._handle_restart_adb_success,
             self._handle_restart_adb_error,
+            task_key=DEVICE_SYNC_TASK_KEY,
         )
 
     def _restart_adb_and_list_devices(self) -> list[DeviceInfo]:
@@ -1011,6 +1078,7 @@ class LogcatToolGUI:
             list_devices,
             lambda devices, serial=target_serial: self._handle_retry_stream_refresh_success(serial, devices),
             self._handle_retry_stream_refresh_error,
+            task_key=DEVICE_SYNC_TASK_KEY,
         )
 
     def _handle_retry_stream_refresh_success(

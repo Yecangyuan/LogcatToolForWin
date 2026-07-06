@@ -104,6 +104,33 @@ class DeferredStderrPopen:
         return self.returncode
 
 
+class RaisingStdout:
+    def __init__(self) -> None:
+        self.state = 0
+
+    def __iter__(self) -> "RaisingStdout":
+        return self
+
+    def __next__(self) -> str:
+        if self.state == 0:
+            self.state = 1
+            return "06-18 12:00:00.000  1234  1235 I MyApp: boot complete\n"
+        raise OSError("stdout read failed")
+
+
+class StdoutErrorPopen:
+    def __init__(self) -> None:
+        self.stdout = RaisingStdout()
+        self.stderr = io.StringIO("")
+        self.returncode = 0
+
+    def terminate(self) -> None:
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
 def test_parse_threadtime_line_extracts_fields() -> None:
     entry = parse_threadtime_line("06-18 12:00:00.000  1234  1235 E MyApp: crash")
     assert entry.level == "E"
@@ -228,6 +255,26 @@ def test_session_drains_stderr_while_stdout_is_still_active() -> None:
 
     assert kinds == ["started", "line", "line", "stderr", "stopped"]
     assert messages[3] == "device offline"
+
+
+def test_session_emits_stopped_event_when_stdout_read_fails() -> None:
+    events: queue.Queue = queue.Queue()
+    session = LogcatSession(["adb", "logcat"], events, lambda *args, **kwargs: StdoutErrorPopen())
+
+    session.start()
+    session.join()
+
+    received = []
+    while not events.empty():
+        event = events.get()
+        received.append((event.kind, event.message))
+
+    assert received == [
+        ("started", ""),
+        ("line", ""),
+        ("stderr", "stdout read failed"),
+        ("stopped", ""),
+    ]
 
 
 def test_session_emits_started_line_and_stderr_events() -> None:

@@ -78,14 +78,21 @@ class LogcatSession:
         stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
         stderr_thread.start()
 
-        for line in self.process.stdout:
-            self.events.put(StreamEvent(kind="line", entry=parse_threadtime_line(line)))
+        pump_error = ""
+        try:
+            for line in self.process.stdout:
+                self.events.put(StreamEvent(kind="line", entry=parse_threadtime_line(line)))
+        except Exception as exc:
+            pump_error = str(exc) or exc.__class__.__name__
+        finally:
+            stderr_thread.join()
+            stderr_messages = [message for message in stderr_text if message]
+            if pump_error:
+                stderr_messages.append(pump_error)
+            if stderr_messages:
+                self.events.put(StreamEvent(kind="stderr", message="\n".join(stderr_messages)))
 
-        stderr_thread.join()
-        if stderr_text:
-            self.events.put(StreamEvent(kind="stderr", message=stderr_text[0]))
-
-        self.events.put(StreamEvent(kind="stopped"))
+            self.events.put(StreamEvent(kind="stopped"))
 
     def stop(self) -> None:
         if self.process is None:

@@ -1017,6 +1017,7 @@ class LogcatToolGUI:
 
     def _handle_restart_adb_error(self, exc: Exception) -> None:
         messagebox.showerror("ADB 重启失败", str(exc))
+        self._handle_refresh_devices_error(exc)
         self.status.last_error = str(exc)
         self._update_status()
 

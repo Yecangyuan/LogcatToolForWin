@@ -1578,6 +1578,36 @@ def test_restart_adb_aborts_when_stream_stop_fails(monkeypatch) -> None:
     assert controller.status.last_error == "stop failed"
 
 
+def test_handle_restart_adb_error_marks_adb_unavailable(monkeypatch) -> None:
+    controller = make_controller()
+    stale_device = make_device("R58M12345")
+    stale_label = gui.device_label(stale_device)
+    errors: list[tuple[str, str]] = []
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_restart_adb_error(controller, RuntimeError("restart failed"))
+
+    assert errors == [("ADB 重启失败", "restart failed")]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.last_error == "restart failed"
+
+
 def test_build_highlight_text_tag_avoids_builtin_tag_collisions() -> None:
     assert gui.build_highlight_text_tag("E") != "E"
     assert gui.build_highlight_text_tag("filtered-out") != "filtered-out"

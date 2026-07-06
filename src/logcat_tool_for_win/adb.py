@@ -15,6 +15,7 @@ from logcat_tool_for_win.filters import build_logcat_filter_spec
 from logcat_tool_for_win.models import DeviceInfo, FilterState
 
 DEFAULT_TCP_PORT = 5555
+_manual_adb_path: Optional[Path] = None
 _runtime_adb_path: Optional[Path] = None
 ADB_LAUNCH_OPTIONS = (
     (None, True),
@@ -146,6 +147,22 @@ def _preferred_runtime_adb_path() -> Optional[Path]:
     return None
 
 
+def get_manual_adb_path() -> Optional[Path]:
+    global _manual_adb_path
+    if _manual_adb_path is None:
+        return None
+    if _manual_adb_path.exists():
+        return _manual_adb_path
+    _manual_adb_path = None
+    return None
+
+
+def set_manual_adb_path(path: Optional[Path]) -> Optional[Path]:
+    global _manual_adb_path
+    _manual_adb_path = None if path is None else Path(path)
+    return _manual_adb_path
+
+
 def _default_adb_path() -> Path:
     override = os.environ.get("LOGCAT_TOOL_ADB")
     if override:
@@ -174,6 +191,11 @@ def _default_adb_path() -> Path:
 
 
 def iter_adb_paths() -> Iterator[Path]:
+    manual_adb = get_manual_adb_path()
+    if manual_adb is not None:
+        yield manual_adb
+        return
+
     override = os.environ.get("LOGCAT_TOOL_ADB")
     if override:
         yield Path(override)

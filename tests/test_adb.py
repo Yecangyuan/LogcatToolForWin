@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import logcat_tool_for_win.adb as adb_module
 from logcat_tool_for_win.adb import (
     DEFAULT_TCP_PORT,
     ADBCommandError,
@@ -11,11 +12,13 @@ from logcat_tool_for_win.adb import (
     connect_device,
     enable_tcpip,
     extract_tcp_port,
+    get_manual_adb_path,
     get_device_route_ip,
     normalize_tcp_target,
     parse_route_source_ip,
     resolve_adb_path,
     run_adb,
+    set_manual_adb_path,
     validate_tcp_target,
 )
 from logcat_tool_for_win.filters import build_logcat_filter_spec
@@ -105,6 +108,40 @@ def test_resolve_adb_path_falls_back_to_path_adb_when_source_resource_is_missing
     monkeypatch.setattr("shutil.which", lambda name: str(path_adb) if name == "adb" else None)
 
     assert resolve_adb_path() == path_adb
+
+
+def test_resolve_adb_path_prefers_manual_override_before_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    manual_adb = tmp_path / "manual" / "adb.exe"
+    manual_adb.parent.mkdir(parents=True)
+    manual_adb.write_text("adb", encoding="utf-8")
+    env_adb = tmp_path / "env" / "adb.exe"
+    env_adb.parent.mkdir(parents=True)
+    env_adb.write_text("adb", encoding="utf-8")
+
+    monkeypatch.setattr(adb_module, "_manual_adb_path", None, raising=False)
+    monkeypatch.setenv("LOGCAT_TOOL_ADB", str(env_adb))
+
+    set_manual_adb_path(manual_adb)
+
+    assert get_manual_adb_path() == manual_adb
+    assert resolve_adb_path() == manual_adb
+
+
+def test_get_manual_adb_path_clears_missing_path_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    missing_adb = tmp_path / "missing" / "adb.exe"
+
+    monkeypatch.setattr(adb_module, "_manual_adb_path", None, raising=False)
+
+    set_manual_adb_path(missing_adb)
+
+    assert get_manual_adb_path() is None
+    assert adb_module._manual_adb_path is None
 
 
 def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_keeps_failing_invalid_handle(

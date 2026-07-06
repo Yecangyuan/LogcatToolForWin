@@ -1928,6 +1928,104 @@ def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
     assert controller.status.last_error == ""
 
 
+def test_configure_adb_path_switches_to_selected_exe_and_refreshes_devices(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("R58M12345")
+    selected_path = "C:/Android/platform-tools/adb.exe"
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    controller.stop_stream = lambda: calls.append(("stop", None))
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            askyesnocancel=lambda title, message: True,
+            showwarning=lambda *args: None,
+            showerror=lambda *args: None,
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "filedialog",
+        SimpleNamespace(
+            askopenfilename=lambda **kwargs: selected_path,
+        ),
+    )
+    monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: calls.append(("set", str(path))))
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path(selected_path))
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.configure_adb_path(controller)
+
+    assert calls == [("stop", None)]
+    assert captured["message"] == "正在切换 ADB..."
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert calls == [("stop", None), ("set", selected_path)]
+    assert controller.devices == [device]
+    assert controller.status.last_error == f"已切换 ADB：{selected_path}"
+
+
+def test_configure_adb_path_resets_to_auto_detection(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("R58M12345")
+    auto_path = "C:/platform-tools/adb.exe"
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    controller.stop_stream = lambda: calls.append(("stop", None))
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            askyesnocancel=lambda title, message: False,
+            showwarning=lambda *args: None,
+            showerror=lambda *args: None,
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "filedialog",
+        SimpleNamespace(
+            askopenfilename=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("should not open file picker when resetting to auto")
+            ),
+        ),
+    )
+    monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: calls.append(("set", path)))
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path(auto_path))
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.configure_adb_path(controller)
+
+    assert calls == [("stop", None)]
+    assert captured["message"] == "正在切换 ADB..."
+    result = captured["action"]()
+    captured["on_success"](result)
+
+    assert calls == [("stop", None), ("set", None)]
+    assert controller.devices == [device]
+    assert controller.status.last_error == f"已恢复自动检测 ADB：{auto_path}"
+
+
 def test_restart_adb_aborts_when_stream_stop_fails(monkeypatch) -> None:
     controller = make_controller()
     calls: list[tuple[str, object]] = []

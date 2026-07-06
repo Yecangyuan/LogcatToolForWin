@@ -26,10 +26,13 @@ from logcat_tool_for_win.adb import (
     connect_device,
     enable_tcpip,
     extract_tcp_port,
+    get_manual_adb_path,
     get_device_route_ip,
     list_devices,
     normalize_tcp_target,
     restart_server,
+    resolve_adb_path,
+    set_manual_adb_path,
 )
 from logcat_tool_for_win.config import (
     QUEUE_DRAIN_MS,
@@ -78,6 +81,7 @@ ERROR = "#F87171"
 HIGHLIGHT_TAG_PREFIX = "highlight::"
 WIRELESS_ADB_BUTTON_LABEL = "USB 开启无线"
 WIRELESS_ADB_ERROR_TITLE = f"{WIRELESS_ADB_BUTTON_LABEL}失败"
+ADB_PATH_BUTTON_LABEL = "ADB 路径"
 STREAM_STATE_LABELS = {
     "idle": "空闲",
     "streaming": "采集中",
@@ -308,6 +312,12 @@ class LogcatToolGUI:
             text="重启 ADB",
             style="App.TButton",
             command=self.restart_adb,
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(
+            toolbar,
+            text=ADB_PATH_BUTTON_LABEL,
+            style="App.TButton",
+            command=self.configure_adb_path,
         ).pack(side=tk.LEFT, padx=4)
 
         body = ttk.Panedwindow(outer, orient=tk.HORIZONTAL)
@@ -1135,6 +1145,70 @@ class LogcatToolGUI:
     def _handle_restart_adb_error(self, exc: Exception) -> None:
         messagebox.showerror("ADB 重启失败", str(exc))
         self._handle_refresh_devices_error(exc)
+        self.status.last_error = str(exc)
+        self._update_status()
+
+    def configure_adb_path(self) -> None:
+        current_path = resolve_adb_path()
+        decision = messagebox.askyesnocancel(
+            ADB_PATH_BUTTON_LABEL,
+            (
+                f"当前 adb：{current_path}\n\n"
+                "选择“是”可切换 adb.exe；选择“否”恢复自动检测；"
+                "选择“取消”保持不变。"
+            ),
+        )
+        if decision is None:
+            return
+
+        selected_path: Optional[Path] = None
+        success_message_prefix = "已恢复自动检测 ADB："
+        if decision:
+            selected = filedialog.askopenfilename(
+                title="选择 adb.exe",
+                initialdir=str(current_path.parent),
+                filetypes=(
+                    ("ADB 可执行文件", "adb.exe"),
+                    ("可执行文件", "*.exe"),
+                    ("所有文件", "*.*"),
+                ),
+            )
+            if not selected:
+                return
+            selected_path = Path(selected)
+            success_message_prefix = "已切换 ADB："
+
+        self.stop_stream()
+        if self.status.stream_state == "failed":
+            return
+
+        previous_manual_path = get_manual_adb_path()
+
+        def action() -> tuple[str, list[DeviceInfo]]:
+            set_manual_adb_path(selected_path)
+            devices = list_devices()
+            return f"{success_message_prefix}{resolve_adb_path()}", devices
+
+        def handle_error(exc: Exception) -> None:
+            set_manual_adb_path(previous_manual_path)
+            self._handle_configure_adb_path_error(exc)
+
+        self._run_background_task(
+            "正在切换 ADB...",
+            action,
+            self._handle_configure_adb_path_success,
+            handle_error,
+            task_key=DEVICE_SYNC_TASK_KEY,
+        )
+
+    def _handle_configure_adb_path_success(self, result: tuple[str, list[DeviceInfo]]) -> None:
+        message, devices = result
+        self._apply_devices(devices)
+        self.status.last_error = message
+        self._update_status()
+
+    def _handle_configure_adb_path_error(self, exc: Exception) -> None:
+        messagebox.showerror("ADB 路径切换失败", str(exc))
         self.status.last_error = str(exc)
         self._update_status()
 

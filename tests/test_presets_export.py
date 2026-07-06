@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from logcat_tool_for_win.export import export_lines
-from logcat_tool_for_win.models import FilterState, HighlightRule
+from logcat_tool_for_win.models import FilterState, HighlightRule, NamedPreset
 from logcat_tool_for_win.presets import load_presets, load_state, save_preset, save_state
 
 
@@ -33,14 +33,22 @@ def test_save_and_load_named_presets_round_trip(tmp_path: Path) -> None:
         presets_file,
         "Errors",
         FilterState(minimum_level="E", tag_filters=("MyApp",)),
+        [HighlightRule(name="Crash", pattern="crash", foreground="#ff6b6b")],
     )
-    save_preset(presets_file, "Warnings", FilterState(minimum_level="W", keyword="slow"))
+    save_preset(
+        presets_file,
+        "Warnings",
+        FilterState(minimum_level="W", keyword="slow"),
+        [HighlightRule(name="ANR", pattern="ANR", foreground="#ffcc00")],
+    )
 
     presets = load_presets(presets_file)
 
     assert sorted(presets) == ["Errors", "Warnings"]
-    assert presets["Errors"].minimum_level == "E"
-    assert presets["Warnings"].keyword == "slow"
+    assert presets["Errors"].filters.minimum_level == "E"
+    assert presets["Errors"].highlight_patterns == ("crash",)
+    assert presets["Warnings"].filters.keyword == "slow"
+    assert presets["Warnings"].highlight_patterns == ("ANR",)
 
 
 def test_load_presets_returns_empty_dict_for_bad_payload(tmp_path: Path) -> None:
@@ -56,9 +64,12 @@ def test_load_presets_normalizes_loaded_filter_values(tmp_path: Path) -> None:
         json.dumps(
             {
                 "Noisy": {
-                    "minimum_level": "?",
-                    "tag_filters": ["", " MyApp ", "MyApp", None, "ActivityManager"],
-                    "keyword": "crash",
+                    "filters": {
+                        "minimum_level": "?",
+                        "tag_filters": ["", " MyApp ", "MyApp", None, "ActivityManager"],
+                        "keyword": "crash",
+                    },
+                    "highlight_patterns": ["", " ANR ", "ANR", None, "crash"],
                 }
             }
         ),
@@ -67,8 +78,34 @@ def test_load_presets_normalizes_loaded_filter_values(tmp_path: Path) -> None:
 
     presets = load_presets(presets_file)
 
-    assert presets["Noisy"].minimum_level == "V"
-    assert presets["Noisy"].tag_filters == ("ActivityManager", "MyApp")
+    assert presets["Noisy"].filters.minimum_level == "V"
+    assert presets["Noisy"].filters.tag_filters == ("ActivityManager", "MyApp")
+    assert presets["Noisy"].highlight_patterns == ("ANR", "crash")
+
+
+def test_load_presets_supports_legacy_filter_only_payloads(tmp_path: Path) -> None:
+    presets_file = tmp_path / "presets.json"
+    presets_file.write_text(
+        json.dumps(
+            {
+                "Legacy": {
+                    "minimum_level": "E",
+                    "tag_filters": ["MyApp"],
+                    "keyword": "fatal",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    presets = load_presets(presets_file)
+
+    assert presets == {
+        "Legacy": NamedPreset(
+            filters=FilterState(minimum_level="E", tag_filters=("MyApp",), keyword="fatal"),
+            highlight_patterns=(),
+        )
+    }
 
 
 def test_load_state_returns_defaults_for_bad_payload(tmp_path: Path) -> None:

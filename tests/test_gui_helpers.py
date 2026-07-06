@@ -13,6 +13,7 @@ from logcat_tool_for_win.models import (
     FilterState,
     HighlightRule,
     LogEntry,
+    NamedPreset,
     StreamEvent,
 )
 
@@ -608,12 +609,15 @@ def test_load_named_preset_batches_filter_refreshes() -> None:
     controller = make_controller()
     refreshes: list[str] = []
     controller.named_presets = {
-        "Errors": FilterState(
-            minimum_level="E",
-            tag_filters=("ActivityManager", "SystemUI"),
-            keyword="crash",
-            auto_scroll=False,
-            match_only=True,
+        "Errors": NamedPreset(
+            filters=FilterState(
+                minimum_level="E",
+                tag_filters=("ActivityManager", "SystemUI"),
+                keyword="crash",
+                auto_scroll=False,
+                match_only=True,
+            ),
+            highlight_patterns=("ANR", "crash"),
         )
     }
     controller.preset_var = DummyVar("Errors")
@@ -628,6 +632,7 @@ def test_load_named_preset_batches_filter_refreshes() -> None:
     controller.level_var = TriggeringVar("V", trigger_filter_trace)
     controller.tag_var = TriggeringVar("", trigger_filter_trace)
     controller.keyword_var = TriggeringVar("", trigger_filter_trace)
+    controller.highlight_var = TriggeringVar("", trigger_filter_trace)
     controller.auto_scroll_var = TriggeringVar(True, trigger_filter_trace)
     controller.match_only_var = TriggeringVar(False, trigger_filter_trace)
 
@@ -637,6 +642,7 @@ def test_load_named_preset_batches_filter_refreshes() -> None:
     assert controller.level_var.get() == "E"
     assert controller.tag_var.get() == "ActivityManager, SystemUI"
     assert controller.keyword_var.get() == "crash"
+    assert controller.highlight_var.get() == "ANR, crash"
     assert controller.auto_scroll_var.get() is False
     assert controller.match_only_var.get() is True
 

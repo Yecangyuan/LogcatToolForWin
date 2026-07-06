@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from logcat_tool_for_win.filters import LEVEL_ORDER, normalize_tag_filters
-from logcat_tool_for_win.models import FilterState, HighlightRule
+from logcat_tool_for_win.models import FilterState, HighlightRule, NamedPreset
 
 
 def _filters_to_payload(filters: FilterState) -> dict[str, object]:
@@ -48,6 +48,47 @@ def _filters_from_payload(payload: object) -> FilterState:
         keyword=keyword if isinstance(keyword, str) else "",
         match_only=_coerce_bool(payload.get("match_only", False), False),
         auto_scroll=_coerce_bool(payload.get("auto_scroll", True), True),
+    )
+
+
+def _normalize_highlight_patterns(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+
+    patterns: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        pattern = item.strip()
+        if not pattern or pattern in seen:
+            continue
+        seen.add(pattern)
+        patterns.append(pattern)
+    return tuple(patterns)
+
+
+def _named_preset_to_payload(preset: NamedPreset) -> dict[str, object]:
+    return {
+        "filters": _filters_to_payload(preset.filters),
+        "highlight_patterns": list(preset.highlight_patterns),
+    }
+
+
+def _named_preset_from_payload(payload: object) -> NamedPreset:
+    if not isinstance(payload, dict):
+        return NamedPreset(filters=FilterState())
+
+    filters_payload = payload.get("filters")
+    if isinstance(filters_payload, dict):
+        return NamedPreset(
+            filters=_filters_from_payload(filters_payload),
+            highlight_patterns=_normalize_highlight_patterns(payload.get("highlight_patterns", [])),
+        )
+
+    return NamedPreset(
+        filters=_filters_from_payload(payload),
+        highlight_patterns=(),
     )
 
 
@@ -94,22 +135,35 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return payload
 
 
-def save_preset(path: Path, name: str, filters: FilterState) -> None:
+def save_preset(
+    path: Path,
+    name: str,
+    filters: FilterState,
+    highlight_rules: list[HighlightRule],
+) -> None:
     presets = load_presets(path)
-    presets[name] = filters
-    payload = {preset_name: _filters_to_payload(state) for preset_name, state in presets.items()}
+    presets[name] = NamedPreset(
+        filters=filters,
+        highlight_patterns=_normalize_highlight_patterns(
+            [rule.pattern for rule in highlight_rules]
+        ),
+    )
+    payload = {
+        preset_name: _named_preset_to_payload(preset)
+        for preset_name, preset in presets.items()
+    }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def load_presets(path: Path) -> dict[str, FilterState]:
+def load_presets(path: Path) -> dict[str, NamedPreset]:
     if not path.exists():
         return {}
     try:
         payload = _read_json_object(path)
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return {}
-    return {name: _filters_from_payload(state) for name, state in payload.items()}
+    return {name: _named_preset_from_payload(state) for name, state in payload.items()}
 
 
 def save_state(

@@ -34,6 +34,12 @@ class HighlightRule:
 
 
 @dataclass
+class NamedPreset:
+    filters: FilterState
+    highlight_patterns: tuple[str, ...] = ()
+
+
+@dataclass
 class LogEntry:
     timestamp_text: str
     level: str

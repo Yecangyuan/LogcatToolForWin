@@ -53,6 +53,7 @@ from logcat_tool_for_win.models import (
     FilterState,
     HighlightRule,
     LogEntry,
+    NamedPreset,
     StreamEvent,
 )
 from logcat_tool_for_win.presets import load_presets, load_state, save_preset, save_state
@@ -855,13 +856,17 @@ class LogcatToolGUI:
             return
 
         filters = self._current_filters()
+        highlight_rules = self._current_highlight_rules()
         try:
-            save_preset(self.presets_file, name, filters)
+            save_preset(self.presets_file, name, filters, highlight_rules)
         except Exception as exc:
             messagebox.showerror("保存预设失败", str(exc))
             return
 
-        self.named_presets[name] = filters
+        self.named_presets[name] = NamedPreset(
+            filters=filters,
+            highlight_patterns=tuple(rule.pattern for rule in highlight_rules),
+        )
         self.preset_var.set(name)
         self._refresh_preset_choices()
 
@@ -874,11 +879,12 @@ class LogcatToolGUI:
 
         self._filter_refresh_suspended = True
         try:
-            self.level_var.set(preset.minimum_level)
-            self.tag_var.set(", ".join(preset.tag_filters))
-            self.keyword_var.set(preset.keyword)
-            self.auto_scroll_var.set(preset.auto_scroll)
-            self.match_only_var.set(preset.match_only)
+            self.level_var.set(preset.filters.minimum_level)
+            self.tag_var.set(", ".join(preset.filters.tag_filters))
+            self.keyword_var.set(preset.filters.keyword)
+            self.highlight_var.set(", ".join(preset.highlight_patterns))
+            self.auto_scroll_var.set(preset.filters.auto_scroll)
+            self.match_only_var.set(preset.filters.match_only)
         finally:
             self._filter_refresh_suspended = False
         self._refresh_visible_entries()

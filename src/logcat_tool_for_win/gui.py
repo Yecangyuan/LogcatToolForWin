@@ -757,6 +757,10 @@ class LogcatToolGUI:
         return build_highlight_rules(self.highlight_var.get())
 
     def start_stream(self) -> None:
+        if not self.status.adb_ready:
+            messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
+            return
+
         try:
             device = self._current_device()
         except ValueError as exc:

@@ -777,6 +777,7 @@ def test_start_stream_uses_unfiltered_capture_command_for_raw_export(monkeypatch
         auto_scroll=False,
     )
     captured: dict[str, object] = {}
+    controller.status.adb_ready = True
 
     controller._current_device = lambda: selected_device
     controller._current_filters = lambda: ui_filters
@@ -814,6 +815,7 @@ def test_start_stream_resets_stale_queue_depth(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")
     controller.status.queue_depth = 42
+    controller.status.adb_ready = True
     controller._current_device = lambda: selected_device
     controller._stop_active_session = lambda manual: None
     controller._update_status = lambda: None
@@ -832,6 +834,32 @@ def test_start_stream_resets_stale_queue_depth(monkeypatch) -> None:
     gui.LogcatToolGUI.start_stream(controller)
 
     assert controller.status.queue_depth == 0
+
+
+def test_start_stream_warns_when_adb_is_not_ready(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    warnings: list[tuple[str, str]] = []
+    stop_calls: list[bool] = []
+
+    controller.status.adb_ready = False
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: stop_calls.append(manual)
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert warnings == [("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")]
+    assert stop_calls == []
+    assert controller.status.stream_state == "idle"
 
 
 def test_refresh_devices_failure_preserves_stale_devices_and_selection(monkeypatch) -> None:

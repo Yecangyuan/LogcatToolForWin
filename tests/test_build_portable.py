@@ -17,6 +17,7 @@ def test_build_portable_creates_zip_with_exe_and_platform_tools(tmp_path: Path) 
     platform_tools = tmp_path / "platform-tools"
     platform_tools.mkdir()
     (platform_tools / "adb.exe").write_text("adb", encoding="utf-8")
+    (platform_tools / "AdbWinApi.dll").write_text("dll", encoding="utf-8")
 
     readme = tmp_path / "README.md"
     readme.write_text("# Portable", encoding="utf-8")
@@ -28,7 +29,8 @@ def test_build_portable_creates_zip_with_exe_and_platform_tools(tmp_path: Path) 
         names = set(archive.namelist())
     assert "logcat-tool-for-win/logcat-tool-for-win.exe" in names
     assert "logcat-tool-for-win/README.md" in names
-    assert "logcat-tool-for-win/platform-tools/adb.exe" not in names
+    assert "logcat-tool-for-win/platform-tools/adb.exe" in names
+    assert "logcat-tool-for-win/platform-tools/AdbWinApi.dll" in names
 
 
 def test_build_portable_rejects_missing_adb_exe(tmp_path: Path) -> None:

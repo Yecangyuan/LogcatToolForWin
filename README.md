@@ -45,7 +45,8 @@ If you already have `adb.exe` elsewhere, point the app at it explicitly:
 LOGCAT_TOOL_ADB="C:\\Android\\platform-tools\\adb.exe" python3.11 -m logcat_tool_for_win
 ```
 
-Packaged builds use a different path. When frozen with PyInstaller, the app first looks for bundled `platform-tools/adb.exe` inside the frozen app, then falls back to `platform-tools/adb.exe` next to the generated executable for legacy folder-style builds.
+Packaged builds use a different path. When frozen with PyInstaller, the app first looks for bundled `platform-tools/adb.exe` inside the frozen app, then falls back to `platform-tools/adb.exe` next to the generated executable.
+The portable ZIP now also includes `platform-tools/` beside the executable so the app can recover with that external `adb.exe` when the embedded copy fails to start on a given Windows machine.
 
 ## Development
 
@@ -66,7 +67,7 @@ What each command does:
 - `ruff check .`: runs linting
 - `python3.11 -m build`: produces the sdist and wheel in `dist/`
 - `pyinstaller --noconfirm --clean logcat-tool-for-win.spec`: builds the self-contained Windows executable `dist/logcat-tool-for-win.exe`
-- `python3.11 scripts/build_portable.py --dist-root dist --output-root artifacts`: assembles `artifacts/logcat-tool-for-win.zip` with the built executable and this README
+- `python3.11 scripts/build_portable.py --dist-root dist --output-root artifacts`: assembles `artifacts/logcat-tool-for-win.zip` with the built executable, a sibling `platform-tools/` fallback copy, and this README
 
 ## Portable Build Flow
 
@@ -75,7 +76,7 @@ To produce the same output locally that CI packages on Windows:
 1. Download the official Android Windows platform-tools ZIP from Google.
 2. Extract it into `src/logcat_tool_for_win/resources/` so that `adb.exe` ends up at `src/logcat_tool_for_win/resources/platform-tools/adb.exe`.
 3. Run the PyInstaller build command so the executable embeds those tools.
-4. Run `scripts/build_portable.py` to create `artifacts/logcat-tool-for-win.zip`.
+4. Run `scripts/build_portable.py` to create `artifacts/logcat-tool-for-win.zip`; the ZIP will contain both `logcat-tool-for-win.exe` and `platform-tools/` at the same level.
 
 ## GitHub Actions
 
@@ -84,6 +85,7 @@ To produce the same output locally that CI packages on Windows:
 - `test` runs on Ubuntu and performs install, lint, pytest, and `python -m build`.
 - `build-windows` runs on Windows after `test` passes.
 - The Windows job downloads the official Android platform-tools ZIP from Google, stages it under `src/logcat_tool_for_win/resources/platform-tools/`, builds the self-contained app with PyInstaller, packages the portable ZIP, and uploads `artifacts/logcat-tool-for-win.zip`.
+- That portable ZIP includes an external `platform-tools/` directory beside the executable so runtime adb fallback still works even if the embedded copy crashes or throws `WinError 6`.
 - `build-windows-legacy` runs a best-effort legacy build on `windows-2022` with `Python 3.8`, embeds Android platform-tools `r28.0.2`, and publishes `artifacts-legacy/logcat-tool-for-win-legacy-win7.zip`.
 - Pushing to `main` publishes both Windows ZIPs to a rolling `latest` GitHub Release, replacing the existing assets.
 - Pushing a tag that matches `v*` such as `v0.1.0` publishes both Windows ZIPs to the matching versioned GitHub Release as assets.
@@ -97,7 +99,7 @@ Current rolling release page:
 
 `adb` is reported as missing:
 - Confirm `LOGCAT_TOOL_ADB` points to a real `adb.exe`, or confirm `src/logcat_tool_for_win/resources/platform-tools/adb.exe` exists when running from source.
-- For packaged builds, use a current build created from this repository so `platform-tools` is embedded. Legacy folder-style builds still require `platform-tools/adb.exe` next to the executable.
+- For packaged builds, use a current build created from this repository so `platform-tools` is embedded and also shipped beside the executable inside the portable ZIP.
 
 No devices appear:
 - Verify the device is visible in a normal `adb devices -l` session.

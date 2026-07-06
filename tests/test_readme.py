@@ -20,3 +20,9 @@ def test_readme_documents_adb_crash_fallback_guidance() -> None:
 
     assert "0xc0000005" in readme
     assert "automatically fall back to another detected `adb.exe`" in readme
+
+
+def test_readme_documents_portable_zip_includes_external_platform_tools() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "portable ZIP now also includes `platform-tools/` beside the executable" in readme

@@ -44,6 +44,7 @@ def build_portable(
     release_dir.mkdir(parents=True)
     shutil.copy2(built_exe, release_dir / built_exe.name)
     shutil.copy2(readme_path, release_dir / "README.md")
+    shutil.copytree(platform_tools_dir, release_dir / "platform-tools")
 
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in release_dir.rglob("*"):

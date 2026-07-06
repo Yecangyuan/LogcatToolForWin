@@ -304,6 +304,44 @@ def test_session_retries_invalid_windows_handle_without_startupinfo(fake_windows
     assert "creationflags" not in captured_kwargs[2]
 
 
+def test_session_falls_back_to_merged_output_after_all_invalid_windows_handle_retries(
+    fake_windows_startupinfo,
+) -> None:
+    events: queue.Queue = queue.Queue()
+    captured_kwargs: list[dict[str, object]] = []
+
+    class MergedOutputPopen:
+        def __init__(self) -> None:
+            self.stdout = io.StringIO(
+                "06-18 12:00:00.000  1234  1235 I MyApp: boot complete\n"
+            )
+            self.stderr = None
+            self.returncode = 0
+
+        def terminate(self) -> None:
+            self.returncode = 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            return self.returncode
+
+    def popen_factory(*args, **kwargs):
+        captured_kwargs.append(kwargs)
+        if len(captured_kwargs) < 5:
+            exc = OSError("[WinError 6] 句柄无效。")
+            exc.winerror = 6
+            raise exc
+        return MergedOutputPopen()
+
+    session = LogcatSession(["adb", "logcat"], events, popen_factory)
+
+    session.start()
+    session.join()
+
+    assert len(captured_kwargs) == 5
+    assert captured_kwargs[4]["stdout"] == subprocess.PIPE
+    assert captured_kwargs[4]["stderr"] == subprocess.STDOUT
+
+
 def test_session_stop_kills_process_when_terminate_times_out() -> None:
     events: queue.Queue = queue.Queue()
     process = StubbornPopen()

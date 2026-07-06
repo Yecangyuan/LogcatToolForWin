@@ -1159,6 +1159,8 @@ class LogcatToolGUI:
 
     def _fail_retry_stream(self, refresh_error: str = "") -> None:
         self.status.stream_state = "failed"
+        self.status.reconnect_attempt = 0
+        self.reconnect_target_serial = ""
         if refresh_error:
             self.status.last_error = f"重连设备不可用：{refresh_error}"
         else:

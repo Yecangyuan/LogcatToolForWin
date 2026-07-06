@@ -1653,6 +1653,7 @@ def test_retry_stream_preserves_refresh_failure_reason() -> None:
     controller.reconnect_target_serial = "target-serial"
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = "target-serial"
+    controller.status.reconnect_attempt = 1
 
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
@@ -1668,6 +1669,8 @@ def test_retry_stream_preserves_refresh_failure_reason() -> None:
 
     assert controller.status.stream_state == "failed"
     assert controller.status.adb_ready is False
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
     assert "重连设备不可用" in controller.status.last_error
     assert "adb unavailable" in controller.status.last_error
 

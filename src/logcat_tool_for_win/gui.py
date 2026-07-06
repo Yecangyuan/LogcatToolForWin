@@ -690,6 +690,13 @@ class LogcatToolGUI:
         self._poll_stream_callback_id = callback_id
         return True
 
+    def _cancel_poll_stream_callback(self) -> bool:
+        callback_id = getattr(self, "_poll_stream_callback_id", None)
+        if callback_id is None:
+            return False
+        self._poll_stream_callback_id = None
+        return self._cancel_ui_callback(callback_id)
+
     def _refresh_preset_choices(self) -> None:
         names = sorted(self.named_presets)
         self.preset_combo["values"] = names
@@ -1393,6 +1400,7 @@ class LogcatToolGUI:
 
     def stop_stream(self) -> None:
         stop_error = self._stop_active_session(manual=True)
+        self._cancel_poll_stream_callback()
         if stop_error:
             self.status.stream_state = "failed"
             self.status.reconnect_attempt = 0
@@ -1972,6 +1980,7 @@ class LogcatToolGUI:
 
     def _on_close(self) -> None:
         self._ui_closing = True
+        self._cancel_poll_stream_callback()
         self._invalidate_pending_filter_refreshes()
         self.save_session_state()
         self._stop_active_session(manual=True)

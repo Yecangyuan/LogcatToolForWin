@@ -1020,6 +1020,18 @@ def test_stop_stream_discards_pending_events_without_active_session() -> None:
     assert controller.status.queue_depth == 0
 
 
+def test_stop_stream_cancels_pending_poll_stream_callback() -> None:
+    controller = make_controller()
+    controller.session = None
+    controller.status.stream_state = "streaming"
+    controller._poll_stream_callback_id = "after-1"
+
+    gui.LogcatToolGUI.stop_stream(controller)
+
+    assert controller.root.after_cancel_calls == ["after-1"]
+    assert controller._poll_stream_callback_id is None
+
+
 def test_start_stream_uses_unfiltered_capture_command_for_raw_export(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")
@@ -2460,6 +2472,7 @@ def test_on_close_cancels_pending_filter_refresh_before_destroy() -> None:
     close_steps: list[str] = []
 
     controller._pending_filter_refresh_id = "after-1"
+    controller._poll_stream_callback_id = "after-2"
     controller._filter_refresh_version = 4
     controller.save_session_state = lambda: close_steps.append("save")
     controller._stop_active_session = lambda manual: close_steps.append(f"stop:{manual}") or None
@@ -2468,7 +2481,8 @@ def test_on_close_cancels_pending_filter_refresh_before_destroy() -> None:
     gui.LogcatToolGUI._on_close(controller)
 
     assert close_steps == ["save", "stop:True"]
-    assert controller.root.after_cancel_calls == ["after-1"]
+    assert controller.root.after_cancel_calls == ["after-2", "after-1"]
+    assert controller._poll_stream_callback_id is None
     assert controller._pending_filter_refresh_id is None
     assert controller._filter_refresh_version == 5
     assert destroy_calls == ["destroy"]

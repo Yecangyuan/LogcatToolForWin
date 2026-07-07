@@ -490,6 +490,8 @@ def connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -
             result = run_adb(["connect", validated_target])
         except ADBCommandError as exc:
             last_error = exc
+            if _is_adb_launch_failure_message(str(exc)):
+                break
             continue
         try:
             return validate_connect_output(result.stdout, validated_target)

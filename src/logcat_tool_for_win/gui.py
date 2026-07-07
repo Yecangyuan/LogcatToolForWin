@@ -135,18 +135,23 @@ def format_status_text(status: AppStatus) -> str:
 
 def _ensure_tcp_device(devices: Iterable[DeviceInfo], target: str) -> list[DeviceInfo]:
     result = list(devices)
-    if not any(device.serial == target for device in result):
-        result.append(
-            DeviceInfo(
-                serial=target,
-                display_name=target,
-                transport="tcp",
-                state="device",
-                model="",
-                product="",
-                raw_descriptor=f"{target}\tdevice",
-            )
-        )
+    ensured_device = DeviceInfo(
+        serial=target,
+        display_name=target,
+        transport="tcp",
+        state="device",
+        model="",
+        product="",
+        raw_descriptor=f"{target}\tdevice",
+    )
+    for index, device in enumerate(result):
+        if device.serial == target:
+            if device.transport != ensured_device.transport or device.state != ensured_device.state:
+                result[index] = ensured_device
+            return result
+    result.append(
+        ensured_device
+    )
     return result
 
 
@@ -1719,8 +1724,12 @@ class LogcatToolGUI:
         )
 
     def _reconnect_tcp_stream_target(self, target_serial: str) -> list[DeviceInfo]:
+        existing_devices = list(self.devices)
         connect_device(target_serial, attempts=2, delay_seconds=1.0)
-        return list_devices()
+        try:
+            return list_devices()
+        except Exception:
+            return _ensure_tcp_device(existing_devices, target_serial)
 
     def _fail_retry_stream(self, refresh_error: str = "") -> None:
         self.status.stream_state = "failed"

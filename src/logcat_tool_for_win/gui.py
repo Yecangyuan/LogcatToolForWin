@@ -1745,9 +1745,15 @@ class LogcatToolGUI:
     def _handle_retry_tcp_stream_error(self, exc: Exception) -> None:
         if self.manual_stop or self.status.stream_state != "reconnecting":
             return
-        self._handle_refresh_devices_error(exc)
-        self._fail_retry_stream(str(exc).strip())
-        self._show_adb_launch_recovery_prompt(str(exc))
+        message = str(exc).strip()
+        if self._is_adb_launch_failure_message(message):
+            self._handle_refresh_devices_error(exc)
+            self._fail_retry_stream(message)
+            self._show_adb_launch_recovery_prompt(message)
+            return
+        if not message:
+            message = "TCP 重连失败。"
+        self._fail_retry_stream(message)
 
     def _fail_retry_stream(self, refresh_error: str = "") -> None:
         self.status.stream_state = "failed"

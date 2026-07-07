@@ -3239,6 +3239,7 @@ def test_retry_stream_fails_when_tcp_target_reconnect_still_errors(
     other_device = make_device("USB123")
     background_calls: list[dict[str, object]] = []
 
+    controller.status.adb_ready = True
     controller.reconnect_target_serial = target_serial
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = target_serial
@@ -3272,9 +3273,90 @@ def test_retry_stream_fails_when_tcp_target_reconnect_still_errors(
     second_call["on_error"](ADBCommandError("timeout"))
 
     assert controller.status.stream_state == "failed"
+    assert controller.status.adb_ready is True
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == "重连设备不可用：timeout"
+
+
+def test_retry_stream_tcp_reconnect_launch_failure_marks_adb_unavailable_and_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = make_controller()
+    target_serial = "192.168.1.111:5555"
+    other_device = make_device("USB123")
+    background_calls: list[dict[str, object]] = []
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.devices = [other_device]
+    controller.status.adb_ready = True
+    controller.reconnect_target_serial = target_serial
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = target_serial
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        background_calls.append(
+            {
+                "message": message,
+                "action": action,
+                "on_success": on_success,
+                "on_error": on_error,
+            }
+        )
+
+    monkeypatch.setattr(gui, "list_devices", lambda: [other_device])
+    monkeypatch.setattr(
+        gui,
+        "connect_device",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ADBCommandError("无法启动 adb：[WinError 6] 句柄无效。")
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+    controller._run_background_task = fake_run_background_task
+    controller.start_stream = lambda: (_ for _ in ()).throw(AssertionError("should not start stream"))
+
+    gui.LogcatToolGUI._retry_stream(controller)
+    assert len(background_calls) == 1
+
+    first_call = background_calls[0]
+    devices = first_call["action"]()
+    first_call["on_success"](devices)
+
+    assert len(background_calls) == 2
+    second_call = background_calls[1]
+    with pytest.raises(ADBCommandError, match="无法启动 adb：\\[WinError 6\\] 句柄无效。"):
+        second_call["action"]()
+    second_call["on_error"](ADBCommandError("无法启动 adb：[WinError 6] 句柄无效。"))
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.adb_ready is False
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == prompts[0][1]
 
 
 def test_retry_stream_preserves_tcp_target_when_refresh_fails_after_reconnect(

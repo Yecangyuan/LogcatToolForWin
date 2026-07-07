@@ -1642,6 +1642,8 @@ class LogcatToolGUI:
     def _handle_configure_adb_path_error(self, exc: Exception) -> None:
         self.status.adb_path = str(resolve_adb_path())
         message = str(exc)
+        self._handle_refresh_devices_error(exc)
+        self.status.adb_path = str(resolve_adb_path())
         if self._show_adb_launch_recovery_prompt(message):
             return
         if self._show_local_adb_service_recovery_prompt(message):

@@ -3730,9 +3730,16 @@ def test_handle_configure_adb_path_error_offers_to_switch_adb_path_for_launch_fa
     monkeypatch,
 ) -> None:
     controller = make_controller()
+    stale_device = make_device("192.168.1.111:5555", state="offline")
+    stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
 
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
     controller.configure_adb_path = lambda: configure_calls.append("configure")
     monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path("C:/Android/platform-tools/adb.exe"))
     monkeypatch.setattr(
@@ -3763,6 +3770,10 @@ def test_handle_configure_adb_path_error_offers_to_switch_adb_path_for_launch_fa
         )
     ]
     assert configure_calls == ["configure"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.adb_path == "C:/Android/platform-tools/adb.exe"
     assert controller.status.last_error == prompts[0][1]
 
@@ -3771,9 +3782,16 @@ def test_handle_configure_adb_path_error_offers_to_restart_adb_for_local_service
     monkeypatch,
 ) -> None:
     controller = make_controller()
+    stale_device = make_device("192.168.1.111:5555", state="offline")
+    stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
 
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
     controller.restart_adb = lambda: restart_calls.append("restart")
     monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path("C:/Android/platform-tools/adb.exe"))
     monkeypatch.setattr(
@@ -3802,8 +3820,45 @@ def test_handle_configure_adb_path_error_offers_to_restart_adb_for_local_service
         )
     ]
     assert restart_calls == ["restart"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.adb_path == "C:/Android/platform-tools/adb.exe"
     assert controller.status.last_error == prompts[0][1]
+
+
+def test_handle_configure_adb_path_error_marks_adb_unavailable(monkeypatch) -> None:
+    controller = make_controller()
+    stale_device = make_device("R58M12345")
+    stale_label = gui.device_label(stale_device)
+    errors: list[tuple[str, str]] = []
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
+
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path("C:/Android/platform-tools/adb.exe"))
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_configure_adb_path_error(controller, RuntimeError("switch failed"))
+
+    assert errors == [("ADB 路径切换失败", "switch failed")]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.adb_path == "C:/Android/platform-tools/adb.exe"
+    assert controller.status.last_error == "switch failed"
 
 
 def test_retry_stream_uses_preserved_reconnect_target_after_refresh(

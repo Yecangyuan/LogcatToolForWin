@@ -852,6 +852,7 @@ def test_connect_device_does_not_retry_known_direct_connect_failures(
     [
         "未找到 adb：/missing/adb.exe",
         "无法执行 adb，请检查权限：/adb.exe",
+        "未找到可用 adb：C:/Android/platform-tools/adb.exe",
     ],
 )
 def test_connect_device_does_not_retry_deterministic_adb_path_failures(

@@ -3726,6 +3726,86 @@ def test_handle_restart_adb_error_offers_to_restart_adb_for_local_service_failur
     assert controller.status.last_error == prompts[0][1]
 
 
+def test_handle_configure_adb_path_error_offers_to_switch_adb_path_for_launch_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path("C:/Android/platform-tools/adb.exe"))
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_configure_adb_path_error(
+        controller,
+        RuntimeError("无法启动 adb：[WinError 6] 句柄无效。"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "无法启动 adb：[WinError 6] 句柄无效。\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.adb_path == "C:/Android/platform-tools/adb.exe"
+    assert controller.status.last_error == prompts[0][1]
+
+
+def test_handle_configure_adb_path_error_offers_to_restart_adb_for_local_service_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.restart_adb = lambda: restart_calls.append("restart")
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path("C:/Android/platform-tools/adb.exe"))
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_configure_adb_path_error(
+        controller,
+        RuntimeError("本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.status.adb_path == "C:/Android/platform-tools/adb.exe"
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

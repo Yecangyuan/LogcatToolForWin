@@ -1641,8 +1641,13 @@ class LogcatToolGUI:
 
     def _handle_configure_adb_path_error(self, exc: Exception) -> None:
         self.status.adb_path = str(resolve_adb_path())
-        messagebox.showerror("ADB 路径切换失败", str(exc))
-        self.status.last_error = str(exc)
+        message = str(exc)
+        if self._show_adb_launch_recovery_prompt(message):
+            return
+        if self._show_local_adb_service_recovery_prompt(message):
+            return
+        messagebox.showerror("ADB 路径切换失败", message)
+        self.status.last_error = message
         self._update_status()
 
     def save_named_preset(self) -> None:

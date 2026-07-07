@@ -2392,16 +2392,24 @@ def test_handle_connect_tcp_error_explains_usb_to_wireless_next_step(monkeypatch
     assert controller.status.last_error == errors[0][1]
 
 
-def test_handle_connect_tcp_error_preserves_local_adb_daemon_guidance(monkeypatch) -> None:
+def test_handle_connect_tcp_error_offers_to_restart_adb_for_local_service_failures(
+    monkeypatch,
+) -> None:
     controller = make_controller()
-    errors: list[tuple[str, str]] = []
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.restart_adb = lambda: restart_calls.append("restart")
 
     monkeypatch.setattr(
         gui,
         "messagebox",
         SimpleNamespace(
             showwarning=lambda *args: None,
-            showerror=lambda title, message: errors.append((title, message)),
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
         ),
     )
 
@@ -2413,14 +2421,17 @@ def test_handle_connect_tcp_error_preserves_local_adb_daemon_guidance(monkeypatc
         ),
     )
 
-    assert errors == [
+    assert prompts == [
         (
-            "连接失败",
+            "ADB 服务异常",
             "无法连接 192.168.1.111:5555。"
-            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
         )
     ]
-    assert controller.status.last_error == errors[0][1]
+    assert restart_calls == ["restart"]
+    assert controller.status.last_error == prompts[0][1]
 
 
 def test_handle_connect_tcp_error_shows_selected_usb_ip_when_target_mismatches(monkeypatch) -> None:
@@ -3096,6 +3107,44 @@ def test_handle_clear_logcat_error_offers_to_switch_adb_path_for_launch_failures
         )
     ]
     assert configure_calls == ["configure"]
+    assert controller.status.last_error == prompts[0][1]
+
+
+def test_handle_clear_logcat_error_offers_to_restart_adb_for_local_service_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_clear_logcat_error(
+        controller,
+        RuntimeError("本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
     assert controller.status.last_error == prompts[0][1]
 
 
@@ -4332,4 +4381,42 @@ def test_handle_wireless_adb_error_offers_to_switch_adb_path_for_launch_failures
         )
     ]
     assert configure_calls == ["configure"]
+    assert controller.status.last_error == prompts[0][1]
+
+
+def test_handle_wireless_adb_error_offers_to_restart_adb_for_local_service_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_wireless_adb_error(
+        controller,
+        RuntimeError("本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
     assert controller.status.last_error == prompts[0][1]

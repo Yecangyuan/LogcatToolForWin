@@ -953,6 +953,8 @@ class LogcatToolGUI:
         message = self._format_connect_tcp_error_message(exc)
         if self._show_adb_launch_recovery_prompt(message):
             return
+        if self._show_local_adb_service_recovery_prompt(message):
+            return
         messagebox.showerror("连接失败", message)
         self.status.last_error = message
         self._update_status()
@@ -1063,6 +1065,8 @@ class LogcatToolGUI:
     def _handle_wireless_adb_error(self, exc: Exception) -> None:
         raw_message = str(exc).strip() or "开启无线 ADB 失败。"
         if self._show_adb_launch_recovery_prompt(raw_message):
+            return
+        if self._show_local_adb_service_recovery_prompt(raw_message):
             return
         message = self._format_wireless_adb_error_message(exc)
         messagebox.showerror(WIRELESS_ADB_ERROR_TITLE, message)
@@ -1496,6 +1500,8 @@ class LogcatToolGUI:
     def _handle_clear_logcat_error(self, exc: Exception) -> None:
         message = str(exc)
         if self._show_adb_launch_recovery_prompt(message):
+            return
+        if self._show_local_adb_service_recovery_prompt(message):
             return
         messagebox.showerror("清空失败", message)
         self.status.last_error = message

@@ -135,22 +135,29 @@ def format_status_text(status: AppStatus) -> str:
 
 def _ensure_tcp_device(devices: Iterable[DeviceInfo], target: str) -> list[DeviceInfo]:
     result = list(devices)
-    ensured_device = DeviceInfo(
-        serial=target,
-        display_name=target,
-        transport="tcp",
-        state="device",
-        model="",
-        product="",
-        raw_descriptor=f"{target}\tdevice",
-    )
     for index, device in enumerate(result):
         if device.serial == target:
-            if device.transport != ensured_device.transport or device.state != ensured_device.state:
-                result[index] = ensured_device
+            if device.transport != "tcp" or device.state != "device":
+                result[index] = DeviceInfo(
+                    serial=target,
+                    display_name=device.display_name or target,
+                    transport="tcp",
+                    state="device",
+                    model=device.model,
+                    product=device.product,
+                    raw_descriptor=f"{target}\tdevice",
+                )
             return result
     result.append(
-        ensured_device
+        DeviceInfo(
+            serial=target,
+            display_name=target,
+            transport="tcp",
+            state="device",
+            model="",
+            product="",
+            raw_descriptor=f"{target}\tdevice",
+        )
     )
     return result
 

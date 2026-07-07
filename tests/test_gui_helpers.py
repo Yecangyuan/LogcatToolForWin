@@ -44,6 +44,29 @@ def test_format_status_text_includes_reconnect_attempt() -> None:
     assert "C:/Android/platform-tools/adb.exe" in text
 
 
+def test_ensure_tcp_device_preserves_existing_metadata_when_recovering_target() -> None:
+    target = "192.168.1.111:5555"
+    existing = DeviceInfo(
+        serial=target,
+        display_name="Pixel 8",
+        transport="tcp",
+        state="offline",
+        model="Pixel_8",
+        product="husky",
+        raw_descriptor=f"{target}\toffline",
+    )
+
+    devices = gui._ensure_tcp_device([existing], target)
+
+    assert len(devices) == 1
+    assert devices[0].serial == target
+    assert devices[0].display_name == "Pixel 8"
+    assert devices[0].transport == "tcp"
+    assert devices[0].state == "device"
+    assert devices[0].model == "Pixel_8"
+    assert devices[0].product == "husky"
+
+
 def test_build_highlight_rules_creates_rules_from_csv_text() -> None:
     rules = gui.build_highlight_rules("ANR, crash , ")
 

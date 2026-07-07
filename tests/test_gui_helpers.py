@@ -1526,6 +1526,113 @@ def test_refresh_devices_async_offers_to_switch_adb_path_for_launch_failures(
     assert controller.status.last_error == prompts[0][1]
 
 
+def test_refresh_devices_offers_to_restart_adb_for_local_service_failures(monkeypatch) -> None:
+    controller = make_controller()
+    stale_device = make_device("R58M12345")
+    stale_label = gui.device_label(stale_device)
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    def raise_refresh_error() -> list[gui.DeviceInfo]:
+        raise RuntimeError(
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
+        )
+
+    monkeypatch.setattr(gui, "list_devices", raise_refresh_error)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.refresh_devices(controller)
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.adb_ready is False
+    assert controller.status.last_error == prompts[0][1]
+
+
+def test_refresh_devices_async_offers_to_restart_adb_for_local_service_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    stale_device = make_device("R58M12345")
+    stale_label = gui.device_label(stale_device)
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+    captured: dict[str, object] = {}
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.refresh_devices_async(controller)
+    captured["on_error"](
+        RuntimeError(
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
+        )
+    )
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.adb_ready is False
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_apply_devices_aligns_selection_to_active_stream_target() -> None:
     controller = make_controller()
     active_device = make_device("USB123")

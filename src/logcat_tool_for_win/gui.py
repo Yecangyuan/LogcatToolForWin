@@ -86,6 +86,7 @@ ERROR = "#F87171"
 HIGHLIGHT_TAG_PREFIX = "highlight::"
 WIRELESS_ADB_BUTTON_LABEL = "USB 开启无线"
 WIRELESS_ADB_ERROR_TITLE = f"{WIRELESS_ADB_BUTTON_LABEL}失败"
+RESTART_ADB_BUTTON_LABEL = "重启 ADB"
 ADB_PATH_BUTTON_LABEL = "ADB 路径"
 STREAM_STATE_LABELS = {
     "idle": "空闲",
@@ -843,7 +844,10 @@ class LogcatToolGUI:
 
     def _handle_user_refresh_devices_error(self, exc: Exception) -> None:
         self._handle_refresh_devices_error(exc)
-        self._show_adb_launch_recovery_prompt(str(exc))
+        message = str(exc)
+        if self._show_adb_launch_recovery_prompt(message):
+            return
+        self._show_local_adb_service_recovery_prompt(message)
 
     def connect_tcp(self) -> None:
         raw_target = self.connect_var.get().strip()
@@ -1300,6 +1304,21 @@ class LogcatToolGUI:
         self._update_status()
         if should_configure:
             self.configure_adb_path()
+        return True
+
+    def _show_local_adb_service_recovery_prompt(self, message: str) -> bool:
+        if not self._is_local_adb_service_failure_message(message):
+            return False
+        prompt = (
+            f"{message}\n\n"
+            f"可直接点界面里的“{RESTART_ADB_BUTTON_LABEL}”尝试恢复。\n\n"
+            "是否现在重启 ADB？"
+        )
+        should_restart = messagebox.askyesno("ADB 服务异常", prompt)
+        self.status.last_error = prompt
+        self._update_status()
+        if should_restart:
+            self.restart_adb()
         return True
 
     def _is_adb_launch_failure_message(self, message: str) -> bool:

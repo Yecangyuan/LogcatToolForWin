@@ -1250,6 +1250,8 @@ class LogcatToolGUI:
 
     def _format_connect_tcp_error_message(self, exc: Exception) -> str:
         message = str(exc).strip() or "连接失败。"
+        if self._is_adb_launch_failure_message(message):
+            return message
         usb_ip_hint = getattr(exc, "usb_ip_hint", "").strip()
         diagnostics = f"\n\n{usb_ip_hint}" if usb_ip_hint else ""
         return (

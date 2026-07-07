@@ -1284,6 +1284,57 @@ def test_start_stream_fails_reconnect_when_adb_is_not_ready(monkeypatch) -> None
     assert controller.status.last_error == "重连设备不可用：ADB 不可用。"
 
 
+def test_start_stream_reconnect_offers_to_restart_adb_when_local_service_failure_is_cached(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.status.adb_ready = False
+    controller.status.stream_state = "reconnecting"
+    controller.status.reconnect_attempt = 1
+    controller.status.active_device_serial = selected_device.serial
+    controller.reconnect_target_serial = selected_device.serial
+    controller.status.last_error = (
+        "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+        "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+        "是否现在重启 ADB？"
+    )
+    controller.restart_adb = lambda: restart_calls.append("restart")
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: None
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: (_ for _ in ()).throw(
+                AssertionError("reconnect local adb service failures should use the recovery prompt")
+            ),
+            showerror=lambda *args: None,
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_start_stream_fails_reconnect_when_current_device_is_missing(monkeypatch) -> None:
     controller = make_controller()
     warnings: list[tuple[str, str]] = []

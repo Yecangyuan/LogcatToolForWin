@@ -959,8 +959,11 @@ class LogcatToolGUI:
         self.status.last_error = message
         self._update_status()
 
-    def _show_cached_adb_recovery_prompt(self) -> bool:
-        message = (self.status.last_error or "").strip()
+    def _show_cached_adb_recovery_prompt(self, message: str = "") -> bool:
+        if message:
+            message = message.strip()
+        else:
+            message = (self.status.last_error or "").strip()
         if not message:
             return False
         recovery_message = message.split("\n\n", 1)[0].strip()
@@ -1396,9 +1399,10 @@ class LogcatToolGUI:
 
     def start_stream(self) -> None:
         if not self.status.adb_ready:
+            cached_error = self.status.last_error
             if self.status.stream_state == "reconnecting":
                 self._fail_retry_stream("ADB 不可用。")
-            if self._show_cached_adb_recovery_prompt():
+            if self._show_cached_adb_recovery_prompt(cached_error):
                 return
             messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
             return

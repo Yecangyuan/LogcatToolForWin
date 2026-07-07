@@ -385,6 +385,8 @@ def _should_retry_connect_error(target: str, message: str) -> bool:
     if _is_adb_launch_failure_message(normalized):
         return False
     lowered = normalized.lower()
+    if normalized.startswith("未找到 adb：") or normalized.startswith("无法执行 adb，请检查权限："):
+        return False
     if "cannot connect to daemon at tcp:5037" in lowered:
         return False
     if "failed to authenticate" in lowered or "unauthorized" in lowered:
@@ -399,6 +401,8 @@ def _should_retry_connect_error(target: str, message: str) -> bool:
 def format_connect_error(target: str, error: ADBCommandError) -> ADBCommandError:
     message = str(error).strip()
     if _is_adb_launch_failure_message(message):
+        return ADBCommandError(message)
+    if message.startswith("未找到 adb：") or message.startswith("无法执行 adb，请检查权限："):
         return ADBCommandError(message)
     detail = _specific_connect_failure_hint(target, message)
     hint = TCP_CONNECT_FAILURE_HINT if not detail else f"{detail} {TCP_CONNECT_FAILURE_HINT}"

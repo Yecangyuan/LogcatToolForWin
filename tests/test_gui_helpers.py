@@ -1206,6 +1206,53 @@ def test_start_stream_warns_when_adb_is_not_ready(monkeypatch) -> None:
     assert controller.status.stream_state == "idle"
 
 
+def test_start_stream_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_service_failure(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.status.adb_ready = False
+    controller.status.last_error = (
+        "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+        "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+        "是否现在重启 ADB？"
+    )
+    controller.restart_adb = lambda: restart_calls.append("restart")
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: (_ for _ in ()).throw(
+        AssertionError("should not stop session while adb is unavailable")
+    )
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            showerror=lambda *args: None,
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.status.stream_state == "idle"
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_start_stream_fails_reconnect_when_adb_is_not_ready(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")
@@ -3081,6 +3128,52 @@ def test_clear_device_logcat_warns_when_adb_is_not_ready(monkeypatch) -> None:
     assert background_calls == []
 
 
+def test_clear_device_logcat_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_service_failure(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+    background_calls: list[str] = []
+
+    controller.status.adb_ready = False
+    controller.status.last_error = (
+        "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+        "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+        "是否现在重启 ADB？"
+    )
+    controller.restart_adb = lambda: restart_calls.append("restart")
+    controller._current_device = lambda: selected_device
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            showerror=lambda *args: None,
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.clear_device_logcat(controller)
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert background_calls == []
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_clear_device_logcat_ignores_stale_failure_from_earlier_request(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("USB123")
@@ -4506,6 +4599,52 @@ def test_enable_wireless_adb_warns_when_adb_is_not_ready(monkeypatch) -> None:
 
     assert warnings == [("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")]
     assert background_calls == []
+
+
+def test_enable_wireless_adb_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_service_failure(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    selected_device = make_device("USB123")
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+    background_calls: list[str] = []
+
+    controller.status.adb_ready = False
+    controller.status.last_error = (
+        "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+        "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+        "是否现在重启 ADB？"
+    )
+    controller.restart_adb = lambda: restart_calls.append("restart")
+    controller._current_device = lambda: selected_device
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            showerror=lambda *args: None,
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.enable_wireless_adb(controller)
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert background_calls == []
+    assert controller.status.last_error == prompts[0][1]
 
 
 def test_enable_wireless_adb_keeps_connected_target_when_device_refresh_fails(monkeypatch) -> None:

@@ -3348,8 +3348,6 @@ def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
 
-    controller.stop_stream = lambda: calls.append(("stop", None))
-
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
         captured["action"] = action
@@ -3362,12 +3360,11 @@ def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
 
     gui.LogcatToolGUI.restart_adb(controller)
 
-    assert calls == [("stop", None)]
     assert captured["message"] == "正在重启 ADB..."
     devices = captured["action"]()
     captured["on_success"](devices)
 
-    assert calls == [("stop", None), ("restart", None)]
+    assert calls == [("restart", None)]
     assert controller.devices == [device]
     assert controller.status.last_error == ""
 
@@ -3378,8 +3375,6 @@ def test_configure_adb_path_switches_to_selected_exe_and_refreshes_devices(monke
     selected_path = "C:/Android/platform-tools/adb.exe"
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
-
-    controller.stop_stream = lambda: calls.append(("stop", None))
 
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
@@ -3411,13 +3406,11 @@ def test_configure_adb_path_switches_to_selected_exe_and_refreshes_devices(monke
 
     gui.LogcatToolGUI.configure_adb_path(controller)
 
-    assert calls == [("stop", None)]
     assert captured["message"] == "正在切换 ADB..."
     result = captured["action"]()
     captured["on_success"](result)
 
     assert calls == [
-        ("stop", None),
         ("set", selected_path),
         ("set", "None"),
         ("set", selected_path),
@@ -3434,8 +3427,6 @@ def test_configure_adb_path_resets_to_auto_detection(monkeypatch) -> None:
     captured: dict[str, object] = {}
     calls: list[tuple[str, object]] = []
     previous_manual_path = Path("C:/existing/adb.exe")
-
-    controller.stop_stream = lambda: calls.append(("stop", None))
 
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
@@ -3469,12 +3460,11 @@ def test_configure_adb_path_resets_to_auto_detection(monkeypatch) -> None:
 
     gui.LogcatToolGUI.configure_adb_path(controller)
 
-    assert calls == [("stop", None)]
     assert captured["message"] == "正在切换 ADB..."
     result = captured["action"]()
     captured["on_success"](result)
 
-    assert calls == [("stop", None), ("set", None), ("set", previous_manual_path), ("set", None)]
+    assert calls == [("set", None), ("set", previous_manual_path), ("set", None)]
     assert controller.devices == [device]
     assert controller.status.last_error == f"已恢复自动检测 ADB：{auto_path}"
 
@@ -3531,25 +3521,75 @@ def test_configure_adb_path_reverts_temporary_path_when_result_becomes_stale(mon
     assert controller.status.last_error == "正在切换 ADB..."
 
 
-def test_restart_adb_aborts_when_stream_stop_fails(monkeypatch) -> None:
+def test_restart_adb_continues_when_stream_stop_fails(monkeypatch) -> None:
     controller = make_controller()
-    calls: list[tuple[str, object]] = []
-
-    def fake_stop_stream() -> None:
-        calls.append(("stop", None))
-        controller.status.stream_state = "failed"
-        controller.status.last_error = "stop failed"
+    device = make_device("R58M12345")
+    captured: dict[str, object] = {}
+    controller.session = FailingSession()
+    controller.status.stream_state = "streaming"
+    controller.status.queue_depth = 2
 
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
-        calls.append(("background", message))
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
 
-    controller.stop_stream = fake_stop_stream
     controller._run_background_task = fake_run_background_task
-    monkeypatch.setattr(gui, "restart_server", lambda: calls.append(("restart", None)))
+    monkeypatch.setattr(gui, "restart_server", lambda: None)
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
 
     gui.LogcatToolGUI.restart_adb(controller)
 
-    assert calls == [("stop", None)]
+    assert captured["message"] == "正在重启 ADB..."
+    assert controller.session is None
+    assert controller.status.stream_state == "idle"
+    assert controller.status.queue_depth == 0
+    assert controller.status.last_error == "stop failed"
+
+
+def test_configure_adb_path_continues_when_stream_stop_fails(monkeypatch) -> None:
+    controller = make_controller()
+    captured: dict[str, object] = {}
+    controller.session = FailingSession()
+    controller.status.stream_state = "streaming"
+    controller.status.queue_depth = 2
+    selected_path = "C:/Android/platform-tools/adb.exe"
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            askyesnocancel=lambda title, message: True,
+            showwarning=lambda *args: None,
+            showerror=lambda *args: None,
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "filedialog",
+        SimpleNamespace(
+            askopenfilename=lambda **kwargs: selected_path,
+        ),
+    )
+    monkeypatch.setattr(gui, "get_manual_adb_path", lambda: None)
+    monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: None)
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path(selected_path))
+    monkeypatch.setattr(gui, "list_devices", lambda: [make_device("R58M12345")])
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.configure_adb_path(controller)
+
+    assert captured["message"] == "正在切换 ADB..."
+    assert controller.session is None
+    assert controller.status.stream_state == "idle"
+    assert controller.status.queue_depth == 0
     assert controller.status.last_error == "stop failed"
 
 

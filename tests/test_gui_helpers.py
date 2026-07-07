@@ -3493,6 +3493,55 @@ def test_handle_restart_adb_error_offers_to_switch_adb_path_for_launch_failures(
     assert controller.status.last_error == prompts[0][1]
 
 
+def test_handle_restart_adb_error_offers_to_restart_adb_for_local_service_failures(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    stale_device = make_device("192.168.1.111:5555", state="offline")
+    stale_label = gui.device_label(stale_device)
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_restart_adb_error(
+        controller,
+        RuntimeError("本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"),
+    )
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

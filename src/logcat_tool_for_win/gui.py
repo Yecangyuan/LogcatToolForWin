@@ -1539,6 +1539,10 @@ class LogcatToolGUI:
             self._handle_refresh_devices_error(exc)
             self._show_adb_launch_recovery_prompt(message)
             return
+        if self._is_local_adb_service_failure_message(message):
+            self._handle_refresh_devices_error(exc)
+            self._show_local_adb_service_recovery_prompt(message)
+            return
         messagebox.showerror("ADB 重启失败", message)
         self._handle_refresh_devices_error(exc)
         self.status.last_error = message

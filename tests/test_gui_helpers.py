@@ -2317,6 +2317,75 @@ def test_handle_connect_tcp_error_offers_to_switch_adb_path_for_launch_failures(
     assert controller.status.last_error == prompts[0][1]
 
 
+def test_connect_tcp_retry_launch_failure_offers_to_switch_adb_path(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.connect_var.set("192.168.1.111:5555")
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["message"] = message
+        captured["action"] = action
+        captured["on_success"] = on_success
+        captured["on_error"] = on_error
+
+    def fake_enable_tcpip(serial: str, port: int) -> str:
+        calls.append(("tcpip", (serial, port)))
+        return "restarting in TCP mode port: 5555\n"
+
+    connect_attempts = 0
+
+    def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+        nonlocal connect_attempts
+        connect_attempts += 1
+        calls.append(("connect", (target, attempts, delay_seconds)))
+        if connect_attempts == 1:
+            raise ADBCommandError("connection refused")
+        raise ADBCommandError("无法启动 adb：[WinError 6] 句柄无效。")
+
+    monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
+    monkeypatch.setattr(gui, "get_device_route_ip", lambda serial: "192.168.1.111")
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb launch failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        captured["action"]()
+    captured["on_error"](exc_info.value)
+
+    assert calls == [
+        ("connect", ("192.168.1.111:5555", 3, 1.0)),
+        ("tcpip", ("USB123", 5555)),
+        ("connect", ("192.168.1.111:5555", 3, 1.0)),
+    ]
+    assert len(prompts) == 1
+    assert prompts[0][0] == "ADB 无法启动"
+    assert "无法启动 adb：[WinError 6] 句柄无效。" in prompts[0][1]
+    assert configure_calls == ["configure"]
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_start_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")

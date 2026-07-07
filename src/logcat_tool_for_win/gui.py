@@ -1300,8 +1300,9 @@ class LogcatToolGUI:
 
     def _is_adb_launch_failure_message(self, message: str) -> bool:
         normalized = message.strip()
-        return normalized.startswith("无法启动 adb：") or normalized.startswith(
-            "adb.exe 启动后崩溃退出（0x"
+        return (
+            "无法启动 adb：" in normalized
+            or "adb.exe 启动后崩溃退出（0x" in normalized
         )
 
     def _remember_connect_target(self, target: str) -> None:

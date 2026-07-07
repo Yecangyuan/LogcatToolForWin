@@ -1532,9 +1532,13 @@ class LogcatToolGUI:
 
     def _handle_clear_logcat_error(self, exc: Exception) -> None:
         message = str(exc)
-        if self._show_adb_launch_recovery_prompt(message):
+        if self._is_adb_launch_failure_message(message):
+            self._handle_refresh_devices_error(exc)
+            self._show_adb_launch_recovery_prompt(message)
             return
-        if self._show_local_adb_service_recovery_prompt(message):
+        if self._is_local_adb_service_failure_message(message):
+            self._handle_refresh_devices_error(exc)
+            self._show_local_adb_service_recovery_prompt(message)
             return
         messagebox.showerror("清空失败", message)
         self.status.last_error = message

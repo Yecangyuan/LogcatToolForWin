@@ -3308,9 +3308,16 @@ def test_handle_clear_logcat_error_offers_to_switch_adb_path_for_launch_failures
     monkeypatch,
 ) -> None:
     controller = make_controller()
+    stale_device = make_device("USB123")
+    stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
 
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
     controller.configure_adb_path = lambda: configure_calls.append("configure")
 
     monkeypatch.setattr(
@@ -3341,6 +3348,10 @@ def test_handle_clear_logcat_error_offers_to_switch_adb_path_for_launch_failures
         )
     ]
     assert configure_calls == ["configure"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.last_error == prompts[0][1]
 
 
@@ -3348,9 +3359,16 @@ def test_handle_clear_logcat_error_offers_to_restart_adb_for_local_service_failu
     monkeypatch,
 ) -> None:
     controller = make_controller()
+    stale_device = make_device("USB123")
+    stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
 
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
     controller.restart_adb = lambda: restart_calls.append("restart")
 
     monkeypatch.setattr(
@@ -3379,6 +3397,10 @@ def test_handle_clear_logcat_error_offers_to_restart_adb_for_local_service_failu
         )
     ]
     assert restart_calls == ["restart"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.last_error == prompts[0][1]
 
 

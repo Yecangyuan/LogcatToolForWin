@@ -1100,6 +1100,8 @@ class LogcatToolGUI:
             direct_error = exc
             if self._is_adb_launch_failure_message(str(exc)):
                 raise
+            if self._is_local_adb_service_failure_message(str(exc)):
+                raise
             if selected_usb_device is None:
                 raise
             route_ip = self._route_ip_for_serial(selected_usb_device.serial)
@@ -1264,6 +1266,8 @@ class LogcatToolGUI:
         message = str(exc).strip() or "连接失败。"
         if self._is_adb_launch_failure_message(message):
             return message
+        if self._is_local_adb_service_failure_message(message):
+            return message
         usb_ip_hint = getattr(exc, "usb_ip_hint", "").strip()
         diagnostics = f"\n\n{usb_ip_hint}" if usb_ip_hint else ""
         return (
@@ -1303,6 +1307,13 @@ class LogcatToolGUI:
         return (
             "无法启动 adb：" in normalized
             or "adb.exe 启动后崩溃退出（0x" in normalized
+        )
+
+    def _is_local_adb_service_failure_message(self, message: str) -> bool:
+        normalized = message.strip()
+        return (
+            "本机 ADB 服务异常" in normalized
+            or "cannot connect to daemon at tcp:5037" in normalized.lower()
         )
 
     def _remember_connect_target(self, target: str) -> None:

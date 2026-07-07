@@ -2179,6 +2179,43 @@ def test_connect_tcp_does_not_retry_usb_fallback_after_adb_launch_failure(
     assert calls == [("connect", ("192.168.1.111:5555", 3, 1.0))]
 
 
+def test_connect_tcp_does_not_retry_usb_fallback_after_local_adb_daemon_failure(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    controller.devices = [usb_device]
+    controller.device_var.set(gui.device_label(usb_device))
+    controller.connect_var.set("192.168.1.111:5555")
+    captured: dict[str, object] = {}
+    calls: list[tuple[str, object]] = []
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        captured["action"] = action
+
+    def fake_connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -> str:
+        calls.append(("connect", (target, attempts, delay_seconds)))
+        raise ADBCommandError(
+            "无法连接 192.168.1.111:5555。"
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
+        )
+
+    def fake_enable_tcpip(serial: str, port: int) -> str:
+        calls.append(("tcpip", (serial, port)))
+        return "restarting in TCP mode port: 5555\n"
+
+    monkeypatch.setattr(gui, "connect_device", fake_connect_device)
+    monkeypatch.setattr(gui, "enable_tcpip", fake_enable_tcpip)
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+
+    with pytest.raises(ADBCommandError, match="本机 ADB 服务异常"):
+        captured["action"]()
+
+    assert calls == [("connect", ("192.168.1.111:5555", 3, 1.0))]
+
+
 def test_connect_tcp_keeps_connected_target_when_device_refresh_fails(monkeypatch) -> None:
     controller = make_controller()
     usb_device = make_device("USB123")
@@ -2243,6 +2280,37 @@ def test_handle_connect_tcp_error_explains_usb_to_wireless_next_step(monkeypatch
             "已先尝试直连目标地址。"
             "如果当前选中的是已授权的 USB 设备，程序也会自动尝试为它开启无线 ADB 后再重连；"
             "也可以手动点“USB 开启无线”。",
+        )
+    ]
+    assert controller.status.last_error == errors[0][1]
+
+
+def test_handle_connect_tcp_error_preserves_local_adb_daemon_guidance(monkeypatch) -> None:
+    controller = make_controller()
+    errors: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_connect_tcp_error(
+        controller,
+        ADBCommandError(
+            "无法连接 192.168.1.111:5555。"
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
+        ),
+    )
+
+    assert errors == [
+        (
+            "连接失败",
+            "无法连接 192.168.1.111:5555。"
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。",
         )
     ]
     assert controller.status.last_error == errors[0][1]

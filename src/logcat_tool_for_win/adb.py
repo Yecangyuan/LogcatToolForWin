@@ -378,6 +378,24 @@ def _specific_connect_failure_hint(target: str, message: str) -> str:
     return ""
 
 
+def _should_retry_connect_error(target: str, message: str) -> bool:
+    normalized = message.strip()
+    if not normalized:
+        return True
+    if _is_adb_launch_failure_message(normalized):
+        return False
+    lowered = normalized.lower()
+    if "cannot connect to daemon at tcp:5037" in lowered:
+        return False
+    if "failed to authenticate" in lowered or "unauthorized" in lowered:
+        return False
+    if lowered.startswith("failed to connect to ") or lowered.startswith("unable to connect to "):
+        return False
+    if target.lower() in lowered and _specific_connect_failure_hint(target, normalized):
+        return False
+    return True
+
+
 def format_connect_error(target: str, error: ADBCommandError) -> ADBCommandError:
     message = str(error).strip()
     if _is_adb_launch_failure_message(message):
@@ -490,7 +508,7 @@ def connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -
             result = run_adb(["connect", validated_target])
         except ADBCommandError as exc:
             last_error = exc
-            if _is_adb_launch_failure_message(str(exc)):
+            if not _should_retry_connect_error(validated_target, str(exc)):
                 break
             continue
         try:

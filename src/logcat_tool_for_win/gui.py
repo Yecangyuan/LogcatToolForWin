@@ -1708,6 +1708,10 @@ class LogcatToolGUI:
     def _handle_retry_stream_refresh_error(self, exc: Exception) -> None:
         if self.manual_stop or self.status.stream_state != "reconnecting":
             return
+        target_serial = getattr(self, "reconnect_target_serial", "") or self.status.active_device_serial
+        if target_serial and ":" in target_serial and not self._is_adb_launch_failure_message(str(exc)):
+            self._retry_tcp_stream_target(target_serial)
+            return
         self._handle_refresh_devices_error(exc)
         self._fail_retry_stream(str(exc).strip())
         self._show_adb_launch_recovery_prompt(str(exc))
@@ -1719,7 +1723,7 @@ class LogcatToolGUI:
             "正在重连设备...",
             lambda: self._reconnect_tcp_stream_target(target_serial),
             lambda devices, serial=target_serial: self._handle_retry_stream_refresh_success(serial, devices),
-            self._handle_retry_stream_refresh_error,
+            self._handle_retry_tcp_stream_error,
             task_key=DEVICE_SYNC_TASK_KEY,
         )
 
@@ -1730,6 +1734,13 @@ class LogcatToolGUI:
             return list_devices()
         except Exception:
             return _ensure_tcp_device(existing_devices, target_serial)
+
+    def _handle_retry_tcp_stream_error(self, exc: Exception) -> None:
+        if self.manual_stop or self.status.stream_state != "reconnecting":
+            return
+        self._handle_refresh_devices_error(exc)
+        self._fail_retry_stream(str(exc).strip())
+        self._show_adb_launch_recovery_prompt(str(exc))
 
     def _fail_retry_stream(self, refresh_error: str = "") -> None:
         self.status.stream_state = "failed"

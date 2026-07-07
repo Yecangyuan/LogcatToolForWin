@@ -181,7 +181,7 @@ class JoinFailingSession:
         return None
 
     def join(self) -> None:
-        raise RuntimeError("logcat worker did not stop within 2 seconds.")
+        raise RuntimeError("logcat 后台线程在 2 秒内未能停止。")
 
 
 class ImmediateThread:
@@ -1009,7 +1009,7 @@ def test_stop_stream_surfaces_join_failures_instead_of_claiming_idle() -> None:
     gui.LogcatToolGUI.stop_stream(controller)
 
     assert controller.status.stream_state == "failed"
-    assert controller.status.last_error == "logcat worker did not stop within 2 seconds."
+    assert controller.status.last_error == "logcat 后台线程在 2 秒内未能停止。"
 
 
 def test_stop_active_session_retains_failed_session_ownership() -> None:

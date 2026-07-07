@@ -457,7 +457,7 @@ def test_session_emits_stopped_when_stderr_read_hangs() -> None:
 
     assert received == [
         ("started", ""),
-        ("stderr", "stderr read timed out"),
+        ("stderr", "读取 logcat 错误输出超时。"),
         ("stopped", ""),
     ]
 
@@ -494,7 +494,7 @@ def test_session_join_raises_when_worker_does_not_finish() -> None:
     worker = LingeringWorker()
     session.worker = worker  # type: ignore[assignment]
 
-    with pytest.raises(RuntimeError, match="logcat worker did not stop within 2 seconds"):
+    with pytest.raises(RuntimeError, match="logcat 后台线程在 2 秒内未能停止。"):
         session.join()
 
     assert worker.timeouts == [2]

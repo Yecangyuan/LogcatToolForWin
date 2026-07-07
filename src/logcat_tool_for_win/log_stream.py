@@ -100,7 +100,7 @@ class LogcatSession:
             stderr_thread.join(timeout=self.stderr_join_timeout)
             stderr_messages = [message for message in stderr_text if message]
             if stderr_thread.is_alive():
-                stderr_messages.append("stderr read timed out")
+                stderr_messages.append("读取 logcat 错误输出超时。")
             if pump_error:
                 stderr_messages.append(pump_error)
             if stderr_messages:
@@ -141,4 +141,4 @@ class LogcatSession:
         if self.worker is not None:
             self.worker.join(timeout=2)
             if self.worker.is_alive():
-                raise RuntimeError("logcat worker did not stop within 2 seconds.")
+                raise RuntimeError("logcat 后台线程在 2 秒内未能停止。")

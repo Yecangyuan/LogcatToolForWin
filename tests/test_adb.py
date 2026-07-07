@@ -755,6 +755,33 @@ def test_connect_device_retries_transient_adb_errors(
     assert sleeps == [0.5]
 
 
+def test_connect_device_does_not_retry_known_connect_output_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="failed to connect to 192.168.0.8:5555: Connection refused\n",
+        stderr="",
+    )
+    calls: list[list[str]] = []
+    sleeps: list[float] = []
+
+    def fake_run_adb(args: list[str], timeout: float = 10.0):
+        calls.append(args)
+        return completed
+
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", fake_run_adb)
+    monkeypatch.setattr("logcat_tool_for_win.adb.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555", attempts=3, delay_seconds=0.5)
+
+    assert "目标端口拒绝连接" in str(exc_info.value)
+    assert calls == [["connect", "192.168.0.8:5555"]]
+    assert sleeps == []
+
+
 def test_enable_tcpip_runs_tcpip_command_for_serial(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

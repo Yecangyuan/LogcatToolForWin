@@ -500,9 +500,9 @@ def connect_device(target: str, attempts: int = 1, delay_seconds: float = 0.0) -
                     return validate_connect_output(combined_output, validated_target)
                 except ADBCommandError as combined_exc:
                     last_error = combined_exc
-                    continue
+                    break
             last_error = exc
-            continue
+            break
     if last_error is not None:
         raise format_connect_error(validated_target, last_error) from last_error
     raise ADBCommandError(f"无法连接 {validated_target}")

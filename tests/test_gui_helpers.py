@@ -3702,6 +3702,88 @@ def test_retry_stream_tcp_reconnect_launch_failure_marks_adb_unavailable_and_pro
     assert controller.status.last_error == prompts[0][1]
 
 
+def test_retry_stream_tcp_reconnect_local_service_failure_marks_adb_unavailable_and_prompts_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = make_controller()
+    target_serial = "192.168.1.111:5555"
+    other_device = make_device("USB123")
+    background_calls: list[dict[str, object]] = []
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.devices = [other_device]
+    controller.status.adb_ready = True
+    controller.reconnect_target_serial = target_serial
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = target_serial
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        background_calls.append(
+            {
+                "message": message,
+                "action": action,
+                "on_success": on_success,
+                "on_error": on_error,
+            }
+        )
+
+    monkeypatch.setattr(gui, "list_devices", lambda: [other_device])
+    monkeypatch.setattr(
+        gui,
+        "connect_device",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ADBCommandError(
+                "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+    controller._run_background_task = fake_run_background_task
+    controller.start_stream = lambda: (_ for _ in ()).throw(AssertionError("should not start stream"))
+
+    gui.LogcatToolGUI._retry_stream(controller)
+    assert len(background_calls) == 1
+
+    first_call = background_calls[0]
+    devices = first_call["action"]()
+    first_call["on_success"](devices)
+
+    assert len(background_calls) == 2
+    second_call = background_calls[1]
+    with pytest.raises(ADBCommandError, match="本机 ADB 服务异常"):
+        second_call["action"]()
+    second_call["on_error"](
+        ADBCommandError("本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。")
+    )
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.status.adb_ready is False
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_retry_stream_preserves_tcp_target_when_refresh_fails_after_reconnect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3809,6 +3891,73 @@ def test_retry_stream_attempts_tcp_reconnect_after_transient_refresh_error(
 
     assert connect_calls == [("192.168.1.111:5555", 2, 1.0)]
     assert started_with == [gui.device_label(target_device)]
+
+
+def test_retry_stream_refresh_local_service_failure_prompts_restart_instead_of_retrying_tcp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = make_controller()
+    target_serial = "192.168.1.111:5555"
+    stale_device = make_device("USB123")
+    background_calls: list[dict[str, object]] = []
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.devices = [stale_device]
+    controller.device_var.set(gui.device_label(stale_device))
+    controller.status.adb_ready = True
+    controller.reconnect_target_serial = target_serial
+    controller.status.stream_state = "reconnecting"
+    controller.status.active_device_serial = target_serial
+    controller.status.reconnect_attempt = 1
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
+        background_calls.append(
+            {
+                "message": message,
+                "action": action,
+                "on_success": on_success,
+                "on_error": on_error,
+            }
+        )
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+    controller._run_background_task = fake_run_background_task
+
+    gui.LogcatToolGUI._retry_stream(controller)
+    assert len(background_calls) == 1
+
+    first_call = background_calls[0]
+    first_call["on_error"](
+        RuntimeError("本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。")
+    )
+
+    assert len(background_calls) == 1
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.status.adb_ready is False
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == prompts[0][1]
 
 
 def test_retry_stream_preserves_refresh_failure_reason() -> None:

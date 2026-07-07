@@ -354,11 +354,26 @@ def _specific_connect_failure_hint(target: str, message: str) -> str:
             "设备鉴权失败。请先解锁手机并在屏幕上允许 USB 调试授权；"
             "如果手机上没有弹出授权框，可先断开后重新插上 USB，或撤销 USB 调试授权后重试。"
         )
-    if "connection refused" in lowered or "actively refused" in lowered:
+    if (
+        "connection refused" in lowered
+        or "actively refused" in lowered
+        or "积极拒绝" in message
+    ):
         return "目标端口拒绝连接。通常是手机端还没监听该端口；请先用 USB 连上后点“USB 开启无线”，再重新连接。"
-    if "timed out" in lowered or "timeout" in lowered:
+    if (
+        "timed out" in lowered
+        or "timeout" in lowered
+        or "连接尝试失败" in message
+        or "没有正确答复" in message
+        or "没有反应" in message
+    ):
         return f"连接超时。请确认手机当前 IP 是否仍然是 {host}，并检查路由器隔离、防火墙或端口拦截。"
-    if "no route to host" in lowered or "network is unreachable" in lowered:
+    if (
+        "no route to host" in lowered
+        or "network is unreachable" in lowered
+        or "网络无法访问" in message
+        or "无法到达主机" in message
+    ):
         return "无法到达目标设备。通常是电脑和手机不在同一网段，或目标 IP 已变化。"
     return ""
 

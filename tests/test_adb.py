@@ -558,6 +558,42 @@ def test_connect_device_explains_connection_refused_failures(
     assert "先用 USB 连上后点“USB 开启无线”" in message
 
 
+@pytest.mark.parametrize(
+    ("stdout", "expected_hint"),
+    [
+        (
+            "failed to connect to 192.168.0.8:5555: 由于目标计算机积极拒绝，无法连接。\n",
+            "目标端口拒绝连接",
+        ),
+        (
+            "failed to connect to 192.168.0.8:5555: 连接尝试失败，因为连接方在一段时间后没有正确答复或连接的主机没有反应。\n",
+            "连接超时",
+        ),
+        (
+            "failed to connect to 192.168.0.8:5555: 网络无法访问。\n",
+            "无法到达目标设备",
+        ),
+    ],
+)
+def test_connect_device_explains_localized_windows_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: str,
+    expected_hint: str,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout=stdout,
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555")
+
+    assert expected_hint in str(exc_info.value)
+
+
 def test_connect_device_explains_timeout_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

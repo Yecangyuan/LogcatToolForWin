@@ -1440,9 +1440,14 @@ def test_start_stream_clears_retry_state_when_reconnect_launch_fails(monkeypatch
 def test_start_stream_offers_to_restart_adb_for_local_service_failures(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")
+    selected_label = gui.device_label(selected_device)
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
 
+    controller.devices = [selected_device]
+    controller.device_var.set(selected_label)
+    controller.device_combo["values"] = [selected_label]
+    controller.status.active_device_serial = selected_device.serial
     controller.status.adb_ready = True
     controller._current_device = lambda: selected_device
     controller._stop_active_session = lambda manual: None
@@ -1482,6 +1487,10 @@ def test_start_stream_offers_to_restart_adb_for_local_service_failures(monkeypat
         )
     ]
     assert restart_calls == ["restart"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [selected_device]
+    assert controller.device_var.get() == selected_label
+    assert controller.status.active_device_serial == selected_device.serial
     assert controller.status.stream_state == "failed"
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == prompts[0][1]
@@ -2544,9 +2553,16 @@ def test_handle_connect_tcp_error_offers_to_restart_adb_for_local_service_failur
     monkeypatch,
 ) -> None:
     controller = make_controller()
+    stale_device = make_device("192.168.1.111:5555", state="offline")
+    stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
 
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
     controller.restart_adb = lambda: restart_calls.append("restart")
 
     monkeypatch.setattr(
@@ -2579,6 +2595,10 @@ def test_handle_connect_tcp_error_offers_to_restart_adb_for_local_service_failur
         )
     ]
     assert restart_calls == ["restart"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.last_error == prompts[0][1]
 
 
@@ -2615,9 +2635,16 @@ def test_handle_connect_tcp_error_offers_to_switch_adb_path_for_launch_failures(
     monkeypatch,
 ) -> None:
     controller = make_controller()
+    stale_device = make_device("192.168.1.111:5555", state="offline")
+    stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
 
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
     controller.configure_adb_path = lambda: configure_calls.append("configure")
 
     monkeypatch.setattr(
@@ -2648,6 +2675,10 @@ def test_handle_connect_tcp_error_offers_to_switch_adb_path_for_launch_failures(
         )
     ]
     assert configure_calls == ["configure"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.last_error == prompts[0][1]
 
 
@@ -2723,9 +2754,14 @@ def test_connect_tcp_retry_launch_failure_offers_to_switch_adb_path(
 def test_start_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")
+    selected_label = gui.device_label(selected_device)
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
 
+    controller.devices = [selected_device]
+    controller.device_var.set(selected_label)
+    controller.device_combo["values"] = [selected_label]
+    controller.status.active_device_serial = selected_device.serial
     controller.status.adb_ready = True
     controller._current_device = lambda: selected_device
     controller._stop_active_session = lambda manual: None
@@ -2770,6 +2806,10 @@ def test_start_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch)
         )
     ]
     assert configure_calls == ["configure"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [selected_device]
+    assert controller.device_var.get() == selected_label
+    assert controller.status.active_device_serial == selected_device.serial
     assert controller.status.stream_state == "failed"
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
@@ -4961,9 +5001,16 @@ def test_handle_wireless_adb_error_offers_to_switch_adb_path_for_launch_failures
     monkeypatch,
 ) -> None:
     controller = make_controller()
+    stale_device = make_device("USB123")
+    stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
 
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
     controller.configure_adb_path = lambda: configure_calls.append("configure")
 
     monkeypatch.setattr(
@@ -4994,6 +5041,10 @@ def test_handle_wireless_adb_error_offers_to_switch_adb_path_for_launch_failures
         )
     ]
     assert configure_calls == ["configure"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.last_error == prompts[0][1]
 
 
@@ -5001,9 +5052,16 @@ def test_handle_wireless_adb_error_offers_to_restart_adb_for_local_service_failu
     monkeypatch,
 ) -> None:
     controller = make_controller()
+    stale_device = make_device("USB123")
+    stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
 
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.status.adb_ready = True
     controller.restart_adb = lambda: restart_calls.append("restart")
 
     monkeypatch.setattr(
@@ -5032,4 +5090,8 @@ def test_handle_wireless_adb_error_offers_to_restart_adb_for_local_service_failu
         )
     ]
     assert restart_calls == ["restart"]
+    assert controller.status.adb_ready is False
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
     assert controller.status.last_error == prompts[0][1]

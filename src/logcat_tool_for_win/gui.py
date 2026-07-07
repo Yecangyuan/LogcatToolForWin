@@ -951,6 +951,8 @@ class LogcatToolGUI:
 
     def _handle_connect_tcp_error(self, exc: Exception) -> None:
         message = self._format_connect_tcp_error_message(exc)
+        if self._is_adb_launch_failure_message(message) or self._is_local_adb_service_failure_message(message):
+            self._handle_refresh_devices_error(exc)
         if self._show_adb_launch_recovery_prompt(message):
             return
         if self._show_local_adb_service_recovery_prompt(message):
@@ -1078,6 +1080,8 @@ class LogcatToolGUI:
 
     def _handle_wireless_adb_error(self, exc: Exception) -> None:
         raw_message = str(exc).strip() or "开启无线 ADB 失败。"
+        if self._is_adb_launch_failure_message(raw_message) or self._is_local_adb_service_failure_message(raw_message):
+            self._handle_refresh_devices_error(exc)
         if self._show_adb_launch_recovery_prompt(raw_message):
             return
         if self._show_local_adb_service_recovery_prompt(raw_message):
@@ -1462,6 +1466,11 @@ class LogcatToolGUI:
             self.status.reconnect_attempt = 0
             self.reconnect_target_serial = ""
             message = str(exc)
+            if self._is_adb_launch_failure_message(message) or self._is_local_adb_service_failure_message(message):
+                self._handle_refresh_devices_error(exc)
+                self.status.stream_state = "failed"
+                self.status.reconnect_attempt = 0
+                self.reconnect_target_serial = ""
             if self._show_adb_launch_recovery_prompt(message):
                 self._update_status()
                 return

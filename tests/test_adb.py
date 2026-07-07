@@ -615,6 +615,25 @@ def test_connect_device_explains_local_adb_daemon_failures(
     assert "可先点界面的“重启 ADB”" in message
 
 
+def test_connect_device_explains_authentication_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["adb", "connect", "192.168.0.8:5555"],
+        returncode=0,
+        stdout="failed to authenticate to 192.168.0.8:5555\n",
+        stderr="",
+    )
+    monkeypatch.setattr("logcat_tool_for_win.adb.run_adb", lambda args, timeout=10.0: completed)
+
+    with pytest.raises(ADBCommandError) as exc_info:
+        connect_device("192.168.0.8:5555")
+
+    message = str(exc_info.value)
+    assert "设备鉴权失败" in message
+    assert "解锁手机并在屏幕上允许 USB 调试授权" in message
+
+
 def test_connect_device_rejects_connected_output_for_different_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -349,6 +349,11 @@ def _specific_connect_failure_hint(target: str, message: str) -> str:
     host = target.rsplit(":", 1)[0]
     if "cannot connect to daemon at tcp:5037" in lowered:
         return "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
+    if "failed to authenticate" in lowered or "unauthorized" in lowered:
+        return (
+            "设备鉴权失败。请先解锁手机并在屏幕上允许 USB 调试授权；"
+            "如果手机上没有弹出授权框，可先断开后重新插上 USB，或撤销 USB 调试授权后重试。"
+        )
     if "connection refused" in lowered or "actively refused" in lowered:
         return "目标端口拒绝连接。通常是手机端还没监听该端口；请先用 USB 连上后点“USB 开启无线”，再重新连接。"
     if "timed out" in lowered or "timeout" in lowered:

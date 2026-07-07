@@ -1445,9 +1445,14 @@ class LogcatToolGUI:
             self.status.reconnect_attempt = 0
             self.reconnect_target_serial = ""
             message = str(exc)
-            if not self._show_adb_launch_recovery_prompt(message):
-                self.status.last_error = message
-                messagebox.showerror("启动失败", message)
+            if self._show_adb_launch_recovery_prompt(message):
+                self._update_status()
+                return
+            if self._show_local_adb_service_recovery_prompt(message):
+                self._update_status()
+                return
+            self.status.last_error = message
+            messagebox.showerror("启动失败", message)
         self._update_status()
 
     def stop_stream(self) -> None:

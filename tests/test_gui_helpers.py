@@ -1339,6 +1339,56 @@ def test_start_stream_clears_retry_state_when_reconnect_launch_fails(monkeypatch
     assert controller.status.last_error == "launch failed"
 
 
+def test_start_stream_offers_to_restart_adb_for_local_service_failures(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.status.adb_ready = True
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: None
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    class FailingSession:
+        def __init__(self, command: list[str], events: queue.Queue[StreamEvent]) -> None:
+            pass
+
+        def start(self) -> None:
+            raise RuntimeError(
+                "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
+            )
+
+    monkeypatch.setattr(gui, "build_logcat_command", lambda serial, filter_state: ["adb", "-s", serial, "logcat"])
+    monkeypatch.setattr(gui, "LogcatSession", FailingSession)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("local adb service failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.status.stream_state == "failed"
+    assert controller.reconnect_target_serial == ""
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_start_stream_clears_retry_state_when_reconnect_stop_fails(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")

@@ -418,7 +418,7 @@ def format_connect_error(target: str, error: ADBCommandError) -> ADBCommandError
     ):
         return ADBCommandError(message)
     detail = _specific_connect_failure_hint(target, message)
-    hint = TCP_CONNECT_FAILURE_HINT if not detail else f"{detail} {TCP_CONNECT_FAILURE_HINT}"
+    hint = detail or TCP_CONNECT_FAILURE_HINT
     if not message:
         return ADBCommandError(f"无法连接 {target}。{hint}")
     if message.startswith(f"无法连接 {target}"):

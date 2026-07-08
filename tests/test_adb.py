@@ -502,7 +502,7 @@ def test_connect_device_adds_actionable_hint_to_failed_connect_output(
 
     message = str(exc_info.value)
     assert "无法连接 192.168.0.8:5555" in message
-    assert "请确认手机和电脑在同一局域网" in message
+    assert "目标端口拒绝连接" in message
     assert "点“USB 开启无线”" in message
     assert "原始错误：failed to connect to 192.168.0.8:5555: Connection refused" in message
 
@@ -649,6 +649,7 @@ def test_connect_device_explains_local_adb_daemon_failures(
     message = str(exc_info.value)
     assert "本机 ADB 服务异常" in message
     assert "可先点界面的“重启 ADB”" in message
+    assert "请确认手机和电脑在同一局域网" not in message
 
 
 def test_connect_device_explains_authentication_failures(
@@ -668,6 +669,7 @@ def test_connect_device_explains_authentication_failures(
     message = str(exc_info.value)
     assert "设备鉴权失败" in message
     assert "解锁手机并在屏幕上允许 USB 调试授权" in message
+    assert "请确认手机和电脑在同一局域网" not in message
 
 
 def test_connect_device_rejects_connected_output_for_different_target(

@@ -2027,10 +2027,13 @@ class LogcatToolGUI:
 
     def _append_visible_entries(self, entries: list[LogEntry]) -> None:
         if entries:
-            rule_map = {rule.name: rule for rule in self.highlight_rules}
-            tag_map = self._build_highlight_tag_map(rule_map)
             self.text.configure(state=tk.NORMAL)
-            self._configure_highlight_tags(rule_map, tag_map, entries)
+            if any(entry.highlight_keys for entry in entries):
+                rule_map = {rule.name: rule for rule in self.highlight_rules}
+                tag_map = self._build_highlight_tag_map(rule_map)
+                self._configure_highlight_tags(rule_map, tag_map, entries)
+            else:
+                tag_map = {}
             for entry in entries:
                 self._insert_visible_entry(entry, tag_map)
             self.text.configure(state=tk.DISABLED)

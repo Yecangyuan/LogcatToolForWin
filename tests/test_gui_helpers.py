@@ -650,6 +650,27 @@ def test_append_visible_entries_skips_index_lookup_for_plain_lines() -> None:
     ]
 
 
+def test_append_visible_entries_skips_highlight_tag_build_for_plain_lines(monkeypatch) -> None:
+    controller = make_controller()
+    controller.highlight_rules = [
+        HighlightRule(name="ANR", pattern="ANR", foreground="#ffcc00", background="#111111")
+    ]
+    entry = make_entry("plain line")
+    entry.matches_filters = True
+    entry.highlight_keys = ()
+    calls: list[str] = []
+
+    def build_tag(rule_name: str) -> str:
+        calls.append(rule_name)
+        return f"highlight::{rule_name}"
+
+    monkeypatch.setattr(gui, "build_highlight_text_tag", build_tag)
+
+    gui.LogcatToolGUI._append_visible_entries(controller, [entry])
+
+    assert calls == []
+
+
 def test_append_entry_skips_highlight_matching_for_hidden_match_only_entry(monkeypatch) -> None:
     controller = make_controller()
     entry = make_entry("hidden line")

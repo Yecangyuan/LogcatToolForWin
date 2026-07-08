@@ -992,14 +992,14 @@ class LogcatToolGUI:
             messagebox.showwarning("需要选择设备", str(exc))
             return
 
+        if device.transport != "usb":
+            messagebox.showwarning("需要 USB 设备", "请先选择通过 USB 连接的设备。")
+            return
         if device.state != "device":
             messagebox.showwarning(
                 "设备未就绪",
                 f"当前设备状态为 {device.state}，请先选择已就绪的 USB 设备。",
             )
-            return
-        if device.transport != "usb":
-            messagebox.showwarning("需要 USB 设备", "请先选择通过 USB 连接的设备。")
             return
 
         raw_target = self.connect_var.get().strip()

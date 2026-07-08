@@ -5139,6 +5139,31 @@ def test_enable_wireless_adb_warns_when_adb_is_not_ready(monkeypatch) -> None:
     assert background_calls == []
 
 
+def test_enable_wireless_adb_warns_when_selected_device_is_not_usb_even_if_offline(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("192.168.1.111:5555", state="offline", transport="tcp")
+    warnings: list[tuple[str, str]] = []
+    background_calls: list[str] = []
+
+    controller.status.adb_ready = True
+    controller._current_device = lambda: selected_device
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.enable_wireless_adb(controller)
+
+    assert warnings == [("需要 USB 设备", "请先选择通过 USB 连接的设备。")]
+    assert background_calls == []
+
+
 def test_enable_wireless_adb_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_service_failure(
     monkeypatch,
 ) -> None:

@@ -1527,6 +1527,7 @@ class LogcatToolGUI:
     def clear_view(self) -> None:
         self.raw_lines.clear()
         self.visible_lines.clear()
+        self._discard_pending_line_events()
         self._render_visible()
 
     def clear_device_logcat(self) -> None:
@@ -2175,6 +2176,18 @@ class LogcatToolGUI:
                 self.events.get_nowait()
             except queue.Empty:
                 return
+
+    def _discard_pending_line_events(self) -> None:
+        retained_events: list[StreamEvent] = []
+        while True:
+            try:
+                event = self.events.get_nowait()
+            except queue.Empty:
+                break
+            if event.kind != "line":
+                retained_events.append(event)
+        for event in retained_events:
+            self.events.put(event)
 
     def _update_status(self) -> None:
         status_text = format_status_text(self.status)

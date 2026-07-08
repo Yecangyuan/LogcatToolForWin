@@ -1364,6 +1364,36 @@ def test_poll_stream_limits_events_per_tick_and_reschedules_immediately() -> Non
     assert controller.root.after_calls[0][0] == 0
 
 
+def test_clear_view_discards_pending_line_events_before_they_are_rendered() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("stale line")))
+
+    gui.LogcatToolGUI.clear_view(controller)
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert list(controller.raw_lines) == []
+    assert list(controller.visible_lines) == []
+    assert controller.text.insert_calls == []
+    assert controller.summary_var.get() == "总行数：0 | 可见：0 | 状态：采集中"
+
+
+def test_clear_view_keeps_pending_non_line_events() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("stale line")))
+    controller.events.put(StreamEvent(kind="stderr", message="device offline"))
+
+    gui.LogcatToolGUI.clear_view(controller)
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert controller.text.insert_calls == []
+    assert controller.status.last_error == "device offline"
+    assert controller.status.queue_depth == 0
+
+
 def test_stop_stream_surfaces_stop_failures_instead_of_claiming_idle() -> None:
     controller = make_controller()
     controller.session = FailingSession()

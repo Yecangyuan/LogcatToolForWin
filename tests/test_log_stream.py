@@ -232,6 +232,22 @@ class FailedExitPopen:
         return self.returncode
 
 
+class ImmediateCrashPopen:
+    def __init__(self) -> None:
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO("")
+        self.returncode = 0xC0000005
+
+    def poll(self) -> int:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.returncode = 0xC0000005
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
 def test_parse_threadtime_line_extracts_fields() -> None:
     entry = parse_threadtime_line("06-18 12:00:00.000  1234  1235 E MyApp: crash")
     assert entry.level == "E"
@@ -435,6 +451,42 @@ def test_session_remembers_runtime_adb_path_after_fallback_launch_success(
     assert adb_module._runtime_adb_path == fallback_adb
 
 
+def test_session_falls_back_to_next_adb_path_after_immediate_access_violation_crash(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_windows_startupinfo,
+) -> None:
+    events: queue.Queue = queue.Queue()
+    captured_commands: list[list[str]] = []
+    failing_adb = Path("C:/bad/adb.exe")
+    fallback_adb = Path("C:/good/adb.exe")
+
+    def popen_factory(command, **kwargs):
+        captured_commands.append(command)
+        if command[0] == str(failing_adb):
+            return ImmediateCrashPopen()
+        return FakePopen()
+
+    monkeypatch.setattr("logcat_tool_for_win.log_stream.adb_module._is_windows", lambda: True)
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream._is_windows_access_violation_returncode",
+        lambda returncode: returncode == 0xC0000005,
+    )
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream.adb_module.iter_adb_paths",
+        lambda: iter((failing_adb, fallback_adb)),
+    )
+
+    session = LogcatSession([str(failing_adb), "logcat"], events, popen_factory)
+
+    session.start()
+    session.join()
+
+    assert captured_commands[0][0] == str(failing_adb)
+    assert captured_commands[-1][0] == str(fallback_adb)
+    assert session.command[0] == str(fallback_adb)
+    assert [event.kind for event in list(events.queue)] == ["started", "line", "stderr", "stopped"]
+
+
 def test_session_stop_kills_process_when_terminate_times_out() -> None:
     events: queue.Queue = queue.Queue()
     process = StubbornPopen()
@@ -553,7 +605,7 @@ def test_session_emits_stopped_when_stderr_read_hangs() -> None:
     ]
 
 
-def test_session_emits_actionable_stderr_when_adb_crashes_immediately_after_launch(
+def test_session_raises_actionable_error_when_adb_crashes_immediately_after_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: queue.Queue = queue.Queue()
@@ -561,27 +613,22 @@ def test_session_emits_actionable_stderr_when_adb_crashes_immediately_after_laun
         "logcat_tool_for_win.log_stream._is_windows_access_violation_returncode",
         lambda returncode: returncode == 0xC0000005,
     )
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream.adb_module.iter_adb_paths",
+        lambda: iter((Path("C:/good/adb.exe"),)),
+    )
     session = LogcatSession(["C:/good/adb.exe", "logcat"], events, lambda *args, **kwargs: CrashedPopen())
 
-    session.start()
-    session.join()
+    with pytest.raises(RuntimeError) as exc_info:
+        session.start()
 
-    received = []
-    while not events.empty():
-        event = events.get()
-        received.append((event.kind, event.message))
-
-    assert received == [
-        ("started", ""),
-        (
-            "stderr",
-            "adb.exe 启动后崩溃退出（0xC0000005）\n"
-            "已尝试的 adb：C:/good/adb.exe\n"
-            "当前 adb 在这个 Windows 环境里无法正常启动。如果你在较老的 Windows 上运行，请优先使用 Releases 里的 "
-            "logcat-tool-for-win-legacy-win7.zip；也可以安装可用的 Android platform-tools，并用 LOGCAT_TOOL_ADB 指向 adb.exe。",
-        ),
-        ("stopped", ""),
-    ]
+    assert str(exc_info.value) == (
+        "adb.exe 启动后崩溃退出（0xC0000005）\n"
+        "已尝试的 adb：C:/good/adb.exe\n"
+        "当前 adb 在这个 Windows 环境里无法正常启动。如果你在较老的 Windows 上运行，请优先使用 Releases 里的 "
+        "logcat-tool-for-win-legacy-win7.zip；也可以安装可用的 Android platform-tools，并用 LOGCAT_TOOL_ADB 指向 adb.exe。"
+    )
+    assert events.empty()
 
 
 def test_session_emits_generic_stderr_when_logcat_exits_nonzero_without_output() -> None:

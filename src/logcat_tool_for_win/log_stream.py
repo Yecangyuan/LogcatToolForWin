@@ -62,19 +62,26 @@ class LogcatSession:
         if adb_module._is_windows():
             launch_kwargs.extend(iter_adb_process_kwargs(bufsize=1, merge_stderr=True))
         launch_commands = self._iter_launch_commands()
+        launch_paths = [Path(command[0]) for command in launch_commands]
         for command_index, command in enumerate(launch_commands):
             for attempt_index, process_kwargs in enumerate(launch_kwargs):
                 try:
-                    self.process = self.popen_factory(command, **process_kwargs)
-                    self.command = command
-                    adb_module._remember_runtime_adb_path(Path(command[0]))
-                    break
+                    process = self.popen_factory(command, **process_kwargs)
                 except OSError as exc:
                     if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
                         continue
                     if _is_invalid_windows_handle(exc) and command_index + 1 < len(launch_commands):
                         break
                     raise
+                returncode = self._current_process_returncode(process)
+                if _is_windows_access_violation_returncode(returncode):
+                    if command_index + 1 < len(launch_commands):
+                        break
+                    raise _format_crashed_adb_error(launch_paths, returncode)
+                self.process = process
+                self.command = command
+                adb_module._remember_runtime_adb_path(Path(command[0]))
+                break
             if self.process is not None:
                 break
         self.events.put(StreamEvent(kind="started"))
@@ -138,18 +145,22 @@ class LogcatSession:
 
     def _process_exit_message(self) -> str:
         assert self.process is not None
-        returncode = getattr(self.process, "returncode", None)
-        poll = getattr(self.process, "poll", None)
-        if returncode is None and callable(poll):
-            try:
-                returncode = poll()
-            except Exception:
-                returncode = getattr(self.process, "returncode", None)
+        returncode = self._current_process_returncode(self.process)
         if not returncode:
             return ""
         if _is_windows_access_violation_returncode(returncode):
             return str(_format_crashed_adb_error([Path(self.command[0])], returncode))
         return f"logcat 进程异常退出，代码：{returncode}"
+
+    def _current_process_returncode(self, process: subprocess.Popen[str]) -> Optional[int]:
+        returncode = getattr(process, "returncode", None)
+        poll = getattr(process, "poll", None)
+        if returncode is None and callable(poll):
+            try:
+                return poll()
+            except Exception:
+                return getattr(process, "returncode", None)
+        return returncode
 
     def stop(self) -> None:
         if self.process is None:

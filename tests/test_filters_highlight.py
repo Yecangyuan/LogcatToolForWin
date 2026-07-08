@@ -233,6 +233,27 @@ def test_match_highlight_rules_reuses_lowered_raw_line_across_repeated_matches()
     assert raw_line.lower_calls == 1
 
 
+def test_match_highlight_rules_reuses_empty_lowered_raw_line_across_rule_changes() -> None:
+    raw_line = LowerCountingStr("")
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="W",
+        tag="ActivityManager",
+        message="",
+        raw_line=raw_line,
+    )
+    first_rules = [
+        HighlightRule(name="ANR", pattern="anr", foreground="#ffcc00"),
+    ]
+    second_rules = [
+        HighlightRule(name="crash", pattern="CRASH", foreground="#ff6b6b"),
+    ]
+
+    assert match_highlight_rules(entry, first_rules) == ()
+    assert match_highlight_rules(entry, second_rules) == ()
+    assert raw_line.lower_calls == 1
+
+
 def test_match_highlight_rules_reuses_cached_matches_for_same_rule_set() -> None:
     raw_line = ContainsCountingStr("ANR detected")
     entry = LogEntry(

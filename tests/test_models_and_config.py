@@ -71,6 +71,7 @@ def test_models_have_stable_defaults(monkeypatch, tmp_path: Path) -> None:
     assert highlight.case_sensitive is False
     assert entry.matches_filters is True
     assert entry.highlight_keys == ()
+    assert entry.lowered_raw_line is None
     assert status.stream_state == "idle"
     assert event.entry is None
     assert event.message == ""

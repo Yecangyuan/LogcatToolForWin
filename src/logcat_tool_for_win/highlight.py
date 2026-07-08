@@ -39,7 +39,7 @@ def match_highlight_rules(
         return entry.cached_highlight_keys
 
     matches: list[str] = []
-    lowered_raw_line: Optional[str] = entry.lowered_raw_line or None
+    lowered_raw_line = entry.lowered_raw_line
     for rule in rules:
         if not rule.pattern:
             continue

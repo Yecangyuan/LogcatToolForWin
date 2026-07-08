@@ -48,7 +48,7 @@ class LogEntry:
     raw_line: str
     matches_filters: bool = True
     highlight_keys: tuple[str, ...] = ()
-    lowered_raw_line: str = ""
+    lowered_raw_line: Optional[str] = None
     lowered_search_text: str = ""
     highlight_match_cache_key: tuple[tuple[str, str, bool], ...] = ()
     cached_highlight_keys: tuple[str, ...] = ()

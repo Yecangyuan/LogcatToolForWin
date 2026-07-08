@@ -804,7 +804,7 @@ class LogcatToolGUI:
         self.status.adb_ready = True
         self.status.last_error = ""
         if not preserve_stream_target:
-            self._sync_selected_device()
+            self._sync_selected_device(update_status=False)
         self._update_status()
 
     def _handle_refresh_devices_error(self, exc: Exception) -> None:
@@ -2169,13 +2169,14 @@ class LogcatToolGUI:
             tag_name = tag_map[rule_name]
             self.text.tag_add(tag_name, line_start, line_end)
 
-    def _sync_selected_device(self) -> None:
+    def _sync_selected_device(self, *, update_status: bool = True) -> None:
         try:
             self.status.active_device_serial = self._current_device().serial
         except ValueError:
             if self.status.stream_state == "idle":
                 self.status.active_device_serial = ""
-        self._update_status()
+        if update_status:
+            self._update_status()
 
     def _stop_active_session(self, manual: bool) -> Optional[str]:
         self.manual_stop = manual

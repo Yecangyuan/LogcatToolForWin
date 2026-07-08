@@ -2440,6 +2440,20 @@ def test_apply_devices_keeps_stale_active_stream_target_during_refresh() -> None
     assert controller.status.active_device_serial == active_device.serial
 
 
+def test_apply_devices_updates_status_once_when_not_preserving_stream_target() -> None:
+    controller = make_controller()
+    device = make_device("USB123")
+    status_updates: list[str] = []
+
+    controller._update_status = lambda: status_updates.append("status")
+
+    gui.LogcatToolGUI._apply_devices(controller, [device])
+
+    assert status_updates == ["status"]
+    assert controller.device_var.get() == gui.device_label(device)
+    assert controller.status.active_device_serial == device.serial
+
+
 def test_current_device_resolves_duplicate_models_by_unique_label() -> None:
     controller = make_controller()
     first_device = make_modeled_device("USB123", "Pixel_8")

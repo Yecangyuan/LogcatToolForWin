@@ -1692,8 +1692,8 @@ class LogcatToolGUI:
             messagebox.showwarning("需要预设名称", "保存前请输入预设名称。")
             return
 
-        filters = self._current_filters()
-        highlight_rules = self._current_highlight_rules()
+        filters = self.filters
+        highlight_rules = self.highlight_rules
         try:
             save_preset(self.presets_file, name, filters, highlight_rules)
         except Exception as exc:

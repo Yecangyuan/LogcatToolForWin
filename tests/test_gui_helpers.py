@@ -1167,6 +1167,53 @@ def test_load_named_preset_updates_cached_filters_and_highlights_before_refresh(
     assert seen[0][1] == ("ANR", "crash")
 
 
+def test_save_named_preset_reuses_cached_filters_and_highlights(monkeypatch) -> None:
+    controller = make_controller()
+    controller.presets_file = Path("/tmp/presets.json")
+    controller.preset_var.set("Errors")
+    controller.filters = FilterState(
+        minimum_level="E",
+        tag_filters=("ActivityManager",),
+        keyword="crash",
+        match_only=True,
+        auto_scroll=False,
+    )
+    controller.highlight_rules = [HighlightRule(name="ANR", pattern="ANR", foreground="#ff0")]
+    controller._current_filters = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached filters")
+    )
+    controller._current_highlight_rules = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached highlight rules")
+    )
+    preset_choices: list[str] = []
+    controller._refresh_preset_choices = lambda: preset_choices.append("refresh")
+
+    captured: dict[str, object] = {}
+
+    def fake_save_preset(path, name, filters, highlight_rules) -> None:
+        captured["path"] = path
+        captured["name"] = name
+        captured["filters"] = filters
+        captured["highlight_rules"] = highlight_rules
+
+    monkeypatch.setattr(gui, "save_preset", fake_save_preset)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(showwarning=lambda *args: None, showerror=lambda *args: None),
+    )
+
+    gui.LogcatToolGUI.save_named_preset(controller)
+
+    assert captured["path"] == controller.presets_file
+    assert captured["name"] == "Errors"
+    assert captured["filters"] is controller.filters
+    assert captured["highlight_rules"] is controller.highlight_rules
+    assert controller.named_presets["Errors"].filters is controller.filters
+    assert controller.named_presets["Errors"].highlight_patterns == ("ANR",)
+    assert preset_choices == ["refresh"]
+
+
 def test_poll_stream_full_renders_when_visible_log_cap_rolls_over() -> None:
     controller = make_controller()
     controller.status.stream_state = "streaming"

@@ -34,12 +34,7 @@ ADB_INVALID_HANDLE_HINT = (
     "logcat-tool-for-win-legacy-win7.zip；"
     "也可以安装可用的 Android platform-tools，并用 LOGCAT_TOOL_ADB 指向 adb.exe。"
 )
-DEVICE_IP_DISCOVERY_COMMANDS = (
-    (["shell", "ip", "route"], "route"),
-    (["shell", "ip", "-f", "inet", "addr", "show", "wlan0"], "ipv4"),
-    (["shell", "ifconfig", "wlan0"], "ipv4"),
-    (["shell", "getprop", "dhcp.wlan0.ipaddress"], "ipv4"),
-)
+DEFAULT_WIRELESS_INTERFACE = "wlan0"
 LOCAL_ADB_SERVICE_FAILURE_PATTERNS = (
     "cannot connect to daemon at tcp:5037",
     "adb server didn't ack",
@@ -451,6 +446,20 @@ def parse_route_source_ip(output: str) -> str:
     return fallback_address
 
 
+def parse_route_interface(output: str) -> str:
+    for line in output.splitlines():
+        parts = line.split()
+        if "dev" not in parts:
+            continue
+        dev_index = parts.index("dev")
+        if dev_index + 1 >= len(parts):
+            continue
+        interface = parts[dev_index + 1].strip()
+        if interface and interface != "lo":
+            return interface
+    return ""
+
+
 def _extract_first_non_loopback_ipv4(output: str) -> str:
     for candidate in re.findall(r"(?:\d{1,3}\.){3}\d{1,3}", output):
         try:
@@ -565,15 +574,28 @@ def enable_tcpip(serial: str, port: int = DEFAULT_TCP_PORT) -> str:
 
 
 def get_device_route_ip(serial: str) -> str:
-    for command, parser_kind in DEVICE_IP_DISCOVERY_COMMANDS:
+    wireless_interface = DEFAULT_WIRELESS_INTERFACE
+    try:
+        result = run_adb(["-s", serial, "shell", "ip", "route"], timeout=5.0)
+    except ADBCommandError:
+        result = None
+    else:
+        address = parse_route_source_ip(result.stdout)
+        if address:
+            return address
+        wireless_interface = parse_route_interface(result.stdout) or DEFAULT_WIRELESS_INTERFACE
+
+    fallback_commands = (
+        ["shell", "ip", "-f", "inet", "addr", "show", wireless_interface],
+        ["shell", "ifconfig", wireless_interface],
+        ["shell", "getprop", f"dhcp.{wireless_interface}.ipaddress"],
+    )
+    for command in fallback_commands:
         try:
             result = run_adb(["-s", serial, *command], timeout=5.0)
         except ADBCommandError:
             continue
-        if parser_kind == "route":
-            address = parse_route_source_ip(result.stdout)
-        else:
-            address = _extract_first_non_loopback_ipv4(result.stdout)
+        address = _extract_first_non_loopback_ipv4(result.stdout)
         if address:
             return address
     return ""

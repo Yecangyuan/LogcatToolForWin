@@ -1391,6 +1391,7 @@ class LogcatToolGUI:
         try:
             normalized_target = normalize_tcp_target(target)
         except ValueError:
+            self._refresh_connect_choices()
             return
         self.recent_targets = [
             normalized_target,
@@ -1744,7 +1745,6 @@ class LogcatToolGUI:
     def save_session_state(self) -> None:
         recent_target = self.connect_var.get().strip()
         self._remember_connect_target(recent_target)
-        self._refresh_connect_choices()
         try:
             save_state(
                 self.state_file,

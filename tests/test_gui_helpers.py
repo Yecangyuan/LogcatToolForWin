@@ -4045,6 +4045,31 @@ def test_save_session_state_skips_invalid_recent_target_history(monkeypatch) -> 
     assert controller.connect_combo.values == ("192.168.1.112:5555",)
 
 
+def test_save_session_state_refreshes_recent_target_choices_once_for_valid_target(monkeypatch) -> None:
+    controller = make_controller()
+    controller.state_file = Path("/tmp/state.json")
+    controller.filters = FilterState()
+    controller.highlight_rules = []
+    controller.connect_var.set("192.168.1.111:5555")
+    controller.recent_targets = ["192.168.1.112:5555"]
+    controller._update_status = lambda: None
+    refresh_calls: list[str] = []
+
+    controller._refresh_connect_choices = lambda: refresh_calls.append("refresh")
+
+    monkeypatch.setattr(gui, "save_state", lambda *args: None)
+    monkeypatch.setattr(gui, "get_manual_adb_path", lambda: None)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(showwarning=lambda *args: None, showerror=lambda *args: None),
+    )
+
+    gui.LogcatToolGUI.save_session_state(controller)
+
+    assert refresh_calls == ["refresh"]
+
+
 def test_on_close_cancels_pending_filter_refresh_before_destroy() -> None:
     controller = make_controller()
     destroy_calls: list[str] = []

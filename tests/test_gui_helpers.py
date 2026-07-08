@@ -9,6 +9,7 @@ import pytest
 
 import logcat_tool_for_win.gui as gui
 from logcat_tool_for_win.adb import ADBCommandError
+from logcat_tool_for_win.devices import parse_devices_output
 from logcat_tool_for_win.models import (
     AppStatus,
     DeviceInfo,
@@ -2151,6 +2152,36 @@ def test_connect_tcp_empty_target_warns_when_no_device_is_selected(monkeypatch) 
 def test_connect_tcp_empty_target_warns_when_selected_device_is_not_usb(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("192.168.1.111:5555")
+    warnings: list[tuple[str, str]] = []
+    background_calls: list[str] = []
+
+    controller.devices = [selected_device]
+    controller.device_var.set(gui.device_label(selected_device))
+    controller.status.active_device_serial = selected_device.serial
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.connect_tcp(controller)
+
+    assert warnings == [("需要 USB 设备", "请先选择通过 USB 连接的设备。")]
+    assert background_calls == []
+
+
+def test_connect_tcp_empty_target_warns_when_selected_device_is_android_emulator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = make_controller()
+    selected_device = parse_devices_output(
+        "List of devices attached\nemulator-5554\tdevice transport_id:9\n"
+    )[0]
     warnings: list[tuple[str, str]] = []
     background_calls: list[str] = []
 
@@ -5248,6 +5279,36 @@ def test_enable_wireless_adb_warns_when_selected_device_is_not_usb_even_if_offli
 
     controller.status.adb_ready = True
     controller._current_device = lambda: selected_device
+    controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda title, message: warnings.append((title, message)),
+            showerror=lambda *args: None,
+        ),
+    )
+
+    gui.LogcatToolGUI.enable_wireless_adb(controller)
+
+    assert warnings == [("需要 USB 设备", "请先选择通过 USB 连接的设备。")]
+    assert background_calls == []
+
+
+def test_enable_wireless_adb_warns_when_selected_device_is_android_emulator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = make_controller()
+    selected_device = parse_devices_output(
+        "List of devices attached\nemulator-5554\tdevice transport_id:9\n"
+    )[0]
+    warnings: list[tuple[str, str]] = []
+    background_calls: list[str] = []
+
+    controller.status.adb_ready = True
+    controller.devices = [selected_device]
+    controller.device_var.set(gui.device_label(selected_device))
     controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
 
     monkeypatch.setattr(

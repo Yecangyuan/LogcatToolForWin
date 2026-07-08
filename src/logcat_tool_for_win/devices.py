@@ -3,6 +3,14 @@ from __future__ import annotations
 from logcat_tool_for_win.models import DeviceInfo
 
 
+def _infer_transport(serial: str) -> str:
+    if serial.startswith("emulator-"):
+        return "emulator"
+    if ":" in serial:
+        return "tcp"
+    return "usb"
+
+
 def parse_devices_output(output: str) -> list[DeviceInfo]:
     devices: list[DeviceInfo] = []
     for raw_line in output.splitlines():
@@ -29,7 +37,7 @@ def parse_devices_output(output: str) -> list[DeviceInfo]:
         model = attrs.get("model", "")
         product = attrs.get("product", "")
         display_name = model or product or serial
-        transport = "tcp" if ":" in serial else "usb"
+        transport = _infer_transport(serial)
 
         devices.append(
             DeviceInfo(

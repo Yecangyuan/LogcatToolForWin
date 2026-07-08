@@ -30,9 +30,10 @@ malformed
     assert devices[1].transport == "tcp"
     assert devices[2].state == "offline"
     assert devices[2].display_name == "emulator-5554"
+    assert devices[2].transport == "emulator"
     assert devices[3].display_name == "ZX1G22ABC"
     assert device_label(devices[1]) == "Pixel_8_Pro [tcp] (192.168.0.15:5555)"
-    assert device_label(devices[2]) == "emulator-5554 [usb]"
+    assert device_label(devices[2]) == "emulator-5554 [emulator]"
 
 
 def test_device_label_includes_serial_for_modeled_devices() -> None:

@@ -200,6 +200,8 @@ class LogcatToolGUI:
         self.reconnect_target_serial = ""
         self.recent_targets = recent_targets[:MAX_RECENT_TARGETS]
         self._configured_highlight_styles: dict[str, tuple[str, str]] = {}
+        self._highlight_tag_map_cache_key: tuple[str, ...] = ()
+        self._highlight_tag_map_cache: dict[str, str] = {}
         self._background_task_versions: dict[str, int] = {}
         self._filter_refresh_suspended = False
         self._filter_trace_ids: list[tuple[tk.Variable, str]] = []
@@ -2015,7 +2017,7 @@ class LogcatToolGUI:
         self.text.delete("1.0", tk.END)
         if any(entry.highlight_keys for entry in self.visible_lines):
             rule_map = {rule.name: rule for rule in self.highlight_rules}
-            tag_map = self._build_highlight_tag_map(rule_map)
+            tag_map = self._highlight_tag_map(rule_map)
             self._configure_highlight_tags(rule_map, tag_map, self.visible_lines)
         else:
             tag_map = {}
@@ -2033,7 +2035,7 @@ class LogcatToolGUI:
             self.text.configure(state=tk.NORMAL)
             if any(entry.highlight_keys for entry in entries):
                 rule_map = {rule.name: rule for rule in self.highlight_rules}
-                tag_map = self._build_highlight_tag_map(rule_map)
+                tag_map = self._highlight_tag_map(rule_map)
                 self._configure_highlight_tags(rule_map, tag_map, entries)
             else:
                 tag_map = {}
@@ -2049,6 +2051,16 @@ class LogcatToolGUI:
         rule_map: dict[str, HighlightRule],
     ) -> dict[str, str]:
         return {rule_name: build_highlight_text_tag(rule_name) for rule_name in rule_map}
+
+    def _highlight_tag_map(
+        self,
+        rule_map: dict[str, HighlightRule],
+    ) -> dict[str, str]:
+        cache_key = tuple(rule_map)
+        if getattr(self, "_highlight_tag_map_cache_key", ()) != cache_key:
+            self._highlight_tag_map_cache_key = cache_key
+            self._highlight_tag_map_cache = self._build_highlight_tag_map(rule_map)
+        return self._highlight_tag_map_cache
 
     def _configure_highlight_tags(
         self,

@@ -586,6 +586,33 @@ def test_append_visible_entries_reuses_existing_highlight_style_across_batches()
     ]
 
 
+def test_append_visible_entries_reuses_highlight_tag_map_across_batches_when_rules_are_unchanged(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    controller.highlight_rules = [
+        HighlightRule(name="ANR", pattern="ANR", foreground="#ffcc00", background="#111111")
+    ]
+    first_entry = make_entry("ANR first")
+    second_entry = make_entry("ANR second")
+    first_entry.highlight_keys = ("ANR",)
+    first_entry.matches_filters = True
+    second_entry.highlight_keys = ("ANR",)
+    second_entry.matches_filters = True
+    calls: list[str] = []
+
+    def build_tag(rule_name: str) -> str:
+        calls.append(rule_name)
+        return f"highlight::{rule_name}"
+
+    monkeypatch.setattr(gui, "build_highlight_text_tag", build_tag)
+
+    gui.LogcatToolGUI._append_visible_entries(controller, [first_entry])
+    gui.LogcatToolGUI._append_visible_entries(controller, [second_entry])
+
+    assert calls == ["ANR"]
+
+
 def test_append_visible_entries_builds_each_highlight_text_tag_once_per_batch(monkeypatch) -> None:
     controller = make_controller()
     controller.highlight_rules = [

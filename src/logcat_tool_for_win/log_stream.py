@@ -65,6 +65,7 @@ class LogcatSession:
                 try:
                     self.process = self.popen_factory(command, **process_kwargs)
                     self.command = command
+                    adb_module._remember_runtime_adb_path(Path(command[0]))
                     break
                 except OSError as exc:
                     if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):

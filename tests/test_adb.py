@@ -73,13 +73,16 @@ def test_resolve_adb_path_prefers_env_override(monkeypatch: pytest.MonkeyPatch, 
     assert resolve_adb_path() == adb_path
 
 
-def test_resolve_adb_path_prefers_embedded_platform_tools_when_frozen(
+def test_resolve_adb_path_prefers_packaged_platform_tools_when_frozen(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
     embedded_adb.parent.mkdir(parents=True)
     embedded_adb.write_text("adb", encoding="utf-8")
+    packaged_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb.parent.mkdir(parents=True)
+    packaged_adb.write_text("adb", encoding="utf-8")
 
     frozen_sys = SimpleNamespace(
         executable=str(tmp_path / "logcat-tool-for-win.exe"),
@@ -89,7 +92,7 @@ def test_resolve_adb_path_prefers_embedded_platform_tools_when_frozen(
     monkeypatch.delenv("LOGCAT_TOOL_ADB", raising=False)
     monkeypatch.setattr("logcat_tool_for_win.adb.sys", frozen_sys)
 
-    assert resolve_adb_path() == embedded_adb
+    assert resolve_adb_path() == packaged_adb
 
 
 def test_resolve_adb_path_falls_back_to_path_adb_when_source_resource_is_missing(
@@ -144,7 +147,7 @@ def test_get_manual_adb_path_clears_missing_path_override(
     assert adb_module._manual_adb_path is None
 
 
-def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_keeps_failing_invalid_handle(
+def test_run_adb_falls_back_to_path_adb_when_frozen_packaged_adb_keeps_failing_invalid_handle(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     fake_windows_startupinfo,
@@ -152,7 +155,10 @@ def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_keeps_failing_i
     embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
     embedded_adb.parent.mkdir(parents=True)
     embedded_adb.write_text("adb", encoding="utf-8")
-    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb.parent.mkdir(parents=True)
+    packaged_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "external-tools" / "adb.exe"
     path_adb.parent.mkdir(parents=True)
     path_adb.write_text("adb", encoding="utf-8")
     completed = subprocess.CompletedProcess(
@@ -170,7 +176,7 @@ def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_keeps_failing_i
 
     def fake_run(command, **kwargs):
         commands.append(command)
-        if command[0] == str(embedded_adb):
+        if command[0] == str(packaged_adb):
             exc = OSError("[WinError 6] 句柄无效。")
             exc.winerror = 6
             raise exc
@@ -185,12 +191,12 @@ def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_keeps_failing_i
     result = run_adb(["connect", "192.168.0.8:5555"])
 
     assert result is completed
-    assert commands[0][0] == str(embedded_adb)
+    assert commands[0][0] == str(packaged_adb)
     assert commands[-1][0] == str(path_adb)
     assert str(path_adb) in [command[0] for command in commands]
 
 
-def test_build_logcat_command_uses_runtime_fallback_adb_after_invalid_handle_recovery(
+def test_build_logcat_command_uses_runtime_fallback_adb_after_packaged_invalid_handle_recovery(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     fake_windows_startupinfo,
@@ -198,7 +204,10 @@ def test_build_logcat_command_uses_runtime_fallback_adb_after_invalid_handle_rec
     embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
     embedded_adb.parent.mkdir(parents=True)
     embedded_adb.write_text("adb", encoding="utf-8")
-    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb.parent.mkdir(parents=True)
+    packaged_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "external-tools" / "adb.exe"
     path_adb.parent.mkdir(parents=True)
     path_adb.write_text("adb", encoding="utf-8")
     completed = subprocess.CompletedProcess(
@@ -214,7 +223,7 @@ def test_build_logcat_command_uses_runtime_fallback_adb_after_invalid_handle_rec
     )
 
     def fake_run(command, **kwargs):
-        if command[0] == str(embedded_adb):
+        if command[0] == str(packaged_adb):
             exc = OSError("[WinError 6] 句柄无效。")
             exc.winerror = 6
             raise exc
@@ -271,7 +280,7 @@ def test_run_adb_reports_actionable_hint_when_all_candidate_adb_paths_fail_inval
     assert "LOGCAT_TOOL_ADB" in message
 
 
-def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_crashes_with_access_violation(
+def test_run_adb_falls_back_to_path_adb_when_frozen_packaged_adb_crashes_with_access_violation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     fake_windows_startupinfo,
@@ -279,7 +288,10 @@ def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_crashes_with_ac
     embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
     embedded_adb.parent.mkdir(parents=True)
     embedded_adb.write_text("adb", encoding="utf-8")
-    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb.parent.mkdir(parents=True)
+    packaged_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "external-tools" / "adb.exe"
     path_adb.parent.mkdir(parents=True)
     path_adb.write_text("adb", encoding="utf-8")
     completed = subprocess.CompletedProcess(
@@ -297,7 +309,7 @@ def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_crashes_with_ac
 
     def fake_run(command, **kwargs):
         commands.append(command)
-        if command[0] == str(embedded_adb):
+        if command[0] == str(packaged_adb):
             return subprocess.CompletedProcess(
                 args=command,
                 returncode=0xC0000005,
@@ -315,12 +327,12 @@ def test_run_adb_falls_back_to_path_adb_when_frozen_embedded_adb_crashes_with_ac
     result = run_adb(["connect", "192.168.0.8:5555"])
 
     assert result is completed
-    assert commands[0][0] == str(embedded_adb)
+    assert commands[0][0] == str(packaged_adb)
     assert commands[-1][0] == str(path_adb)
     assert str(path_adb) in [command[0] for command in commands]
 
 
-def test_build_logcat_command_uses_runtime_fallback_adb_after_access_violation_recovery(
+def test_build_logcat_command_uses_runtime_fallback_adb_after_packaged_access_violation_recovery(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     fake_windows_startupinfo,
@@ -328,7 +340,10 @@ def test_build_logcat_command_uses_runtime_fallback_adb_after_access_violation_r
     embedded_adb = tmp_path / "_MEI12345" / "platform-tools" / "adb.exe"
     embedded_adb.parent.mkdir(parents=True)
     embedded_adb.write_text("adb", encoding="utf-8")
-    path_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb = tmp_path / "platform-tools" / "adb.exe"
+    packaged_adb.parent.mkdir(parents=True)
+    packaged_adb.write_text("adb", encoding="utf-8")
+    path_adb = tmp_path / "external-tools" / "adb.exe"
     path_adb.parent.mkdir(parents=True)
     path_adb.write_text("adb", encoding="utf-8")
     completed = subprocess.CompletedProcess(
@@ -344,7 +359,7 @@ def test_build_logcat_command_uses_runtime_fallback_adb_after_access_violation_r
     )
 
     def fake_run(command, **kwargs):
-        if command[0] == str(embedded_adb):
+        if command[0] == str(packaged_adb):
             return subprocess.CompletedProcess(
                 args=command,
                 returncode=0xC0000005,

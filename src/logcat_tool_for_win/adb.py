@@ -181,14 +181,14 @@ def _default_adb_path() -> Path:
     if getattr(sys, "frozen", False):
         bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
         bundled_adb = bundle_root / "platform-tools" / "adb.exe"
-        if bundled_adb.exists():
-            return bundled_adb
         packaged_adb = Path(sys.executable).resolve().parent / "platform-tools" / "adb.exe"
         if packaged_adb.exists():
             return packaged_adb
         path_adb = shutil.which("adb")
         if path_adb:
             return Path(path_adb)
+        if bundled_adb.exists():
+            return bundled_adb
         return packaged_adb
 
     source_adb = Path(__file__).resolve().parent / "resources" / "platform-tools" / "adb.exe"
@@ -222,9 +222,9 @@ def iter_adb_paths() -> Iterator[Path]:
             iter(
                 (
                     runtime_adb,
-                    bundled_adb if bundled_adb.exists() else None,
                     packaged_adb if packaged_adb.exists() else None,
                     Path(path_adb) if path_adb else None,
+                    bundled_adb if bundled_adb.exists() else None,
                 )
             )
         ):

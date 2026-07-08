@@ -54,7 +54,11 @@ from logcat_tool_for_win.filters import (
     normalize_tag_filters,
     prepare_filter_state,
 )
-from logcat_tool_for_win.highlight import DEFAULT_LEVEL_COLORS, match_highlight_rules
+from logcat_tool_for_win.highlight import (
+    DEFAULT_LEVEL_COLORS,
+    build_highlight_rule_cache_key,
+    match_highlight_rules,
+)
 from logcat_tool_for_win.log_stream import LogcatSession
 from logcat_tool_for_win.models import (
     AppStatus,
@@ -1933,6 +1937,7 @@ class LogcatToolGUI:
         filters_snapshot: Optional[FilterState] = None
         prepared_filters_snapshot: Optional[PreparedFilterState] = None
         highlight_rules_snapshot: Optional[list[HighlightRule]] = None
+        highlight_rules_cache_key_snapshot: Optional[tuple[tuple[str, str, bool], ...]] = None
         processed = 0
         previously_rendered_visible_count = len(self.visible_lines)
 
@@ -1955,11 +1960,15 @@ class LogcatToolGUI:
                     filters_snapshot = self.filters
                     prepared_filters_snapshot = prepare_filter_state(filters_snapshot)
                     highlight_rules_snapshot = self.highlight_rules
+                    highlight_rules_cache_key_snapshot = build_highlight_rule_cache_key(
+                        highlight_rules_snapshot
+                    )
                 visible_entry = self._append_entry(
                     event.entry,
                     filters_snapshot,
                     highlight_rules_snapshot,
                     prepared_filters_snapshot,
+                    highlight_rules_cache_key_snapshot,
                 )
                 if visible_entry is not None:
                     new_visible_entries.append(visible_entry)
@@ -1995,6 +2004,7 @@ class LogcatToolGUI:
         filters: Optional[FilterState] = None,
         rules: Optional[list[HighlightRule]] = None,
         prepared_filters: Optional[PreparedFilterState] = None,
+        rules_cache_key: Optional[tuple[tuple[str, str, bool], ...]] = None,
     ) -> Optional[LogEntry]:
         self.raw_lines.append(entry)
         if filters is None:
@@ -2003,9 +2013,15 @@ class LogcatToolGUI:
             prepared_filters = prepare_filter_state(filters)
         if rules is None:
             rules = self.highlight_rules
+        if rules_cache_key is None:
+            rules_cache_key = build_highlight_rule_cache_key(rules)
         entry.matches_filters = entry_matches_prepared(entry, prepared_filters)
         if entry.matches_filters or not filters.match_only:
-            entry.highlight_keys = match_highlight_rules(entry, rules)
+            entry.highlight_keys = match_highlight_rules(
+                entry,
+                rules,
+                rule_cache_key=rules_cache_key,
+            )
             self.visible_lines.append(entry)
             return entry
         entry.highlight_keys = ()
@@ -2016,11 +2032,16 @@ class LogcatToolGUI:
         filters = self.filters
         prepared_filters = prepare_filter_state(filters)
         rules = self.highlight_rules
+        rules_cache_key = build_highlight_rule_cache_key(rules)
         self.visible_lines.clear()
         for entry in self.raw_lines:
             entry.matches_filters = entry_matches_prepared(entry, prepared_filters)
             if entry.matches_filters or not filters.match_only:
-                entry.highlight_keys = match_highlight_rules(entry, rules)
+                entry.highlight_keys = match_highlight_rules(
+                    entry,
+                    rules,
+                    rule_cache_key=rules_cache_key,
+                )
                 self.visible_lines.append(entry)
             else:
                 entry.highlight_keys = ()
@@ -2029,8 +2050,13 @@ class LogcatToolGUI:
     def _refresh_highlight_entries(self) -> None:
         self._invalidate_pending_filter_refreshes()
         rules = self.highlight_rules
+        rules_cache_key = build_highlight_rule_cache_key(rules)
         for entry in self.visible_lines:
-            entry.highlight_keys = match_highlight_rules(entry, rules)
+            entry.highlight_keys = match_highlight_rules(
+                entry,
+                rules,
+                rule_cache_key=rules_cache_key,
+            )
         self._render_visible()
 
     def _render_visible(self) -> None:

@@ -4,7 +4,11 @@ from logcat_tool_for_win.filters import (
     entry_matches,
     normalize_tag_filters,
 )
-from logcat_tool_for_win.highlight import DEFAULT_LEVEL_COLORS, match_highlight_rules
+from logcat_tool_for_win.highlight import (
+    DEFAULT_LEVEL_COLORS,
+    build_highlight_rule_cache_key,
+    match_highlight_rules,
+)
 from logcat_tool_for_win.models import FilterState, HighlightRule, LogEntry
 
 
@@ -281,6 +285,27 @@ def test_match_highlight_rules_invalidates_cache_when_rule_set_changes() -> None
     assert match_highlight_rules(entry, first_rules) == ("ANR",)
     assert match_highlight_rules(entry, second_rules) == ("detected",)
     assert raw_line.contains_calls == 2
+
+
+def test_match_highlight_rules_reuses_explicit_rule_cache_key_without_rebuilding(monkeypatch) -> None:
+    entry = LogEntry(
+        timestamp_text="06-18 10:00:00.000",
+        level="W",
+        tag="ActivityManager",
+        message="ANR detected",
+        raw_line="ANR detected",
+    )
+    rules = [HighlightRule(name="ANR", pattern="ANR", foreground="#ffcc00")]
+    rule_cache_key = build_highlight_rule_cache_key(rules)
+
+    monkeypatch.setattr(
+        "logcat_tool_for_win.highlight._rules_cache_key",
+        lambda _rules: (_ for _ in ()).throw(
+            AssertionError("explicit rule cache key should skip rebuilding")
+        ),
+    )
+
+    assert match_highlight_rules(entry, rules, rule_cache_key=rule_cache_key) == ("ANR",)
 
 
 def test_default_level_colors_include_error_red() -> None:

@@ -24,8 +24,17 @@ def _rules_cache_key(rules: list[HighlightRule]) -> tuple[tuple[str, str, bool],
     return tuple((rule.name, rule.pattern, rule.case_sensitive) for rule in rules)
 
 
-def match_highlight_rules(entry: LogEntry, rules: list[HighlightRule]) -> tuple[str, ...]:
-    cache_key = _rules_cache_key(rules)
+def build_highlight_rule_cache_key(rules: list[HighlightRule]) -> tuple[tuple[str, str, bool], ...]:
+    return _rules_cache_key(rules)
+
+
+def match_highlight_rules(
+    entry: LogEntry,
+    rules: list[HighlightRule],
+    *,
+    rule_cache_key: Optional[tuple[tuple[str, str, bool], ...]] = None,
+) -> tuple[str, ...]:
+    cache_key = rule_cache_key if rule_cache_key is not None else _rules_cache_key(rules)
     if entry.highlight_match_cache_key == cache_key:
         return entry.cached_highlight_keys
 

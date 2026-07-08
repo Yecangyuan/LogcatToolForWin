@@ -822,7 +822,12 @@ def test_append_entry_skips_highlight_matching_for_hidden_match_only_entry(monke
     rules = [HighlightRule(name="hidden", pattern="hidden", foreground="#fff")]
     calls: list[object] = []
 
-    def match_highlights(entry_arg: LogEntry, rules_arg: list[HighlightRule]) -> tuple[str, ...]:
+    def match_highlights(
+        entry_arg: LogEntry,
+        rules_arg: list[HighlightRule],
+        *,
+        rule_cache_key=None,
+    ) -> tuple[str, ...]:
         calls.append((entry_arg, rules_arg))
         return ("hidden",)
 
@@ -855,7 +860,12 @@ def test_refresh_visible_entries_skips_highlight_matching_for_hidden_match_only_
     controller.filters = filters
     controller.highlight_rules = rules
 
-    def match_highlights(entry_arg: LogEntry, rules_arg: list[HighlightRule]) -> tuple[str, ...]:
+    def match_highlights(
+        entry_arg: LogEntry,
+        rules_arg: list[HighlightRule],
+        *,
+        rule_cache_key=None,
+    ) -> tuple[str, ...]:
         calls.append(entry_arg)
         return ("line",)
 
@@ -962,6 +972,40 @@ def test_refresh_visible_entries_prepares_keyword_filter_once_for_raw_log_batch(
     assert len(controller.visible_lines) == 3
 
 
+def test_refresh_visible_entries_builds_highlight_rule_cache_key_once_for_raw_log_batch(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    for index in range(3):
+        controller.raw_lines.append(make_entry(f"crash {index}"))
+    controller.filters = FilterState(minimum_level="V")
+    controller.highlight_rules = [HighlightRule(name="crash", pattern="crash", foreground="#fff")]
+    cache_key_calls: list[list[HighlightRule]] = []
+    match_calls: list[object] = []
+
+    monkeypatch.setattr(
+        gui,
+        "build_highlight_rule_cache_key",
+        lambda rules: cache_key_calls.append(rules) or (("crash", "crash", False),),
+    )
+
+    def match_highlights(
+        entry_arg: LogEntry,
+        rules_arg: list[HighlightRule],
+        *,
+        rule_cache_key=None,
+    ) -> tuple[str, ...]:
+        match_calls.append(rule_cache_key)
+        return ("crash",)
+
+    monkeypatch.setattr(gui, "match_highlight_rules", match_highlights)
+
+    gui.LogcatToolGUI._refresh_visible_entries(controller)
+
+    assert cache_key_calls == [controller.highlight_rules]
+    assert match_calls == [(("crash", "crash", False),)] * 3
+
+
 def test_handle_highlight_trace_debounces_visible_rehighlight(monkeypatch) -> None:
     controller = make_controller()
     hidden_entry = make_entry("hidden line")
@@ -978,7 +1022,12 @@ def test_handle_highlight_trace_debounces_visible_rehighlight(monkeypatch) -> No
     controller._refresh_visible_entries = lambda: full_refreshes.append("full")
     controller._render_visible = lambda: renders.append("render")
 
-    def match_highlights(entry_arg: LogEntry, rules_arg: list[HighlightRule]) -> tuple[str, ...]:
+    def match_highlights(
+        entry_arg: LogEntry,
+        rules_arg: list[HighlightRule],
+        *,
+        rule_cache_key=None,
+    ) -> tuple[str, ...]:
         calls.append(entry_arg)
         return ("line",)
 

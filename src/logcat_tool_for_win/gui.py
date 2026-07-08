@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import replace
 import queue
 import threading
 import time
@@ -541,7 +542,7 @@ class LogcatToolGUI:
     def _handle_auto_scroll_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
             return
-        self.filters = self._current_filters()
+        self.filters = replace(self.filters, auto_scroll=self.auto_scroll_var.get())
         if self.auto_scroll_var.get():
             self.text.see(tk.END)
 

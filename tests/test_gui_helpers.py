@@ -939,6 +939,29 @@ def test_handle_auto_scroll_trace_scrolls_without_full_refresh() -> None:
     assert controller.text.see_calls == [gui.tk.END]
 
 
+def test_handle_auto_scroll_trace_reuses_cached_filter_content() -> None:
+    controller = make_controller()
+    controller.filters = FilterState(
+        minimum_level="E",
+        tag_filters=("ActivityManager",),
+        keyword="crash",
+        match_only=True,
+        auto_scroll=False,
+    )
+    controller.auto_scroll_var.set(True)
+    controller._current_filters = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached filters")
+    )
+
+    gui.LogcatToolGUI._handle_auto_scroll_trace(controller)
+
+    assert controller.filters.minimum_level == "E"
+    assert controller.filters.tag_filters == ("ActivityManager",)
+    assert controller.filters.keyword == "crash"
+    assert controller.filters.match_only is True
+    assert controller.filters.auto_scroll is True
+
+
 def test_handle_filter_trace_debounces_full_refresh() -> None:
     controller = make_controller()
     refreshes: list[str] = []

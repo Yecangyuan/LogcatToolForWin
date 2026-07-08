@@ -1922,13 +1922,13 @@ class LogcatToolGUI:
     def _poll_stream(self) -> None:
         self._poll_stream_callback_id = None
         updated = False
-        full_render_required = False
         status_dirty = False
         new_visible_entries: list[LogEntry] = []
         filters_snapshot: Optional[FilterState] = None
         prepared_filters_snapshot: Optional[PreparedFilterState] = None
         highlight_rules_snapshot: Optional[list[HighlightRule]] = None
         processed = 0
+        previously_rendered_visible_count = len(self.visible_lines)
 
         while processed < MAX_EVENTS_PER_TICK:
             try:
@@ -1949,7 +1949,7 @@ class LogcatToolGUI:
                     filters_snapshot = self.filters
                     prepared_filters_snapshot = prepare_filter_state(filters_snapshot)
                     highlight_rules_snapshot = self.highlight_rules
-                visible_entry, entry_full_render_required = self._append_entry(
+                visible_entry = self._append_entry(
                     event.entry,
                     filters_snapshot,
                     highlight_rules_snapshot,
@@ -1957,7 +1957,6 @@ class LogcatToolGUI:
                 )
                 if visible_entry is not None:
                     new_visible_entries.append(visible_entry)
-                full_render_required = full_render_required or entry_full_render_required
             elif event.kind == "stderr":
                 if self.manual_stop or self.status.stream_state not in {"streaming", "reconnecting"}:
                     continue
@@ -1973,10 +1972,7 @@ class LogcatToolGUI:
                     self._schedule_reconnect()
 
         if updated:
-            if full_render_required:
-                self._render_visible()
-            else:
-                self._append_visible_entries(new_visible_entries)
+            self._append_visible_entries(new_visible_entries, previously_rendered_visible_count)
 
         queue_depth = self.events.qsize()
         status_changed = status_dirty or self.status.queue_depth != queue_depth
@@ -1993,7 +1989,7 @@ class LogcatToolGUI:
         filters: Optional[FilterState] = None,
         rules: Optional[list[HighlightRule]] = None,
         prepared_filters: Optional[PreparedFilterState] = None,
-    ) -> tuple[Optional[LogEntry], bool]:
+    ) -> Optional[LogEntry]:
         self.raw_lines.append(entry)
         if filters is None:
             filters = self.filters
@@ -2004,14 +2000,10 @@ class LogcatToolGUI:
         entry.matches_filters = entry_matches_prepared(entry, prepared_filters)
         if entry.matches_filters or not filters.match_only:
             entry.highlight_keys = match_highlight_rules(entry, rules)
-            full_render_required = (
-                self.visible_lines.maxlen is not None
-                and len(self.visible_lines) >= self.visible_lines.maxlen
-            )
             self.visible_lines.append(entry)
-            return entry, full_render_required
+            return entry
         entry.highlight_keys = ()
-        return None, False
+        return None
 
     def _refresh_visible_entries(self) -> None:
         self._invalidate_pending_filter_refreshes()
@@ -2053,9 +2045,23 @@ class LogcatToolGUI:
         if self.auto_scroll_var.get():
             self.text.see(tk.END)
 
-    def _append_visible_entries(self, entries: list[LogEntry]) -> None:
-        if entries:
+    def _append_visible_entries(
+        self,
+        entries: list[LogEntry],
+        previously_rendered_count: Optional[int] = None,
+    ) -> None:
+        trim_count = 0
+        if previously_rendered_count is not None:
+            overflow = max(0, previously_rendered_count + len(entries) - len(self.visible_lines))
+            trim_count = min(overflow, previously_rendered_count)
+            skip_count = overflow - trim_count
+            if skip_count:
+                entries = entries[skip_count:]
+
+        if trim_count or entries:
             self.text.configure(state=tk.NORMAL)
+            if trim_count:
+                self.text.delete("1.0", f"{trim_count + 1}.0")
             if any(entry.highlight_keys for entry in entries):
                 rule_map = {rule.name: rule for rule in self.highlight_rules}
                 tag_map = self._highlight_tag_map(rule_map)

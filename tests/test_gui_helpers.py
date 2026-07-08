@@ -172,6 +172,13 @@ class DummyText:
 
     def delete(self, start: object, end: object) -> None:
         self.delete_calls.append((start, end))
+        if start == "1.0" and end == gui.tk.END:
+            self.next_line = 1
+            return
+        if isinstance(start, str) and isinstance(end, str) and start.endswith(".0") and end.endswith(".0"):
+            removed_lines = max(0, int(end.split(".", 1)[0]) - int(start.split(".", 1)[0]))
+            self.next_line = max(1, self.next_line - removed_lines)
+            return
         self.next_line = 1
 
     def index(self, _index: object) -> str:
@@ -821,7 +828,7 @@ def test_append_entry_skips_highlight_matching_for_hidden_match_only_entry(monke
 
     monkeypatch.setattr(gui, "match_highlight_rules", match_highlights)
 
-    visible_entry, full_render_required = gui.LogcatToolGUI._append_entry(
+    visible_entry = gui.LogcatToolGUI._append_entry(
         controller,
         entry,
         filters,
@@ -829,7 +836,6 @@ def test_append_entry_skips_highlight_matching_for_hidden_match_only_entry(monke
     )
 
     assert visible_entry is None
-    assert full_render_required is False
     assert calls == []
     assert entry.highlight_keys == ()
 
@@ -1302,7 +1308,7 @@ def test_save_named_preset_reuses_cached_filters_and_highlights(monkeypatch) -> 
     assert preset_choices == ["refresh"]
 
 
-def test_poll_stream_full_renders_when_visible_log_cap_rolls_over() -> None:
+def test_poll_stream_trims_oldest_visible_line_without_full_redraw_when_cap_rolls_over() -> None:
     controller = make_controller()
     controller.status.stream_state = "streaming"
     controller.manual_stop = False
@@ -1313,8 +1319,32 @@ def test_poll_stream_full_renders_when_visible_log_cap_rolls_over() -> None:
 
     gui.LogcatToolGUI._poll_stream(controller)
 
-    assert full_renders == [True]
+    assert full_renders == []
+    assert controller.text.delete_calls == [("1.0", "2.0")]
+    assert controller.text.insert_calls == [
+        (gui.tk.END, "06-18 10:00:00.000 E ActivityManager: new\n", "E")
+    ]
     assert [entry.message for entry in controller.visible_lines] == ["new"]
+
+
+def test_poll_stream_skips_ephemeral_new_lines_when_batch_overflows_visible_cap() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    controller.visible_lines = deque(maxlen=1)
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("first")))
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("second")))
+    full_renders: list[object] = []
+    controller._render_visible = lambda: full_renders.append(True)
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert full_renders == []
+    assert controller.text.delete_calls == []
+    assert controller.text.insert_calls == [
+        (gui.tk.END, "06-18 10:00:00.000 E ActivityManager: second\n", "E")
+    ]
+    assert [entry.message for entry in controller.visible_lines] == ["second"]
 
 
 def test_poll_stream_limits_events_per_tick_and_reschedules_immediately() -> None:

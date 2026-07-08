@@ -1370,6 +1370,8 @@ class LogcatToolGUI:
         normalized = message.strip()
         return (
             "无法启动 adb：" in normalized
+            or "未找到 adb：" in normalized
+            or "无法执行 adb，请检查权限：" in normalized
             or "adb.exe 启动后崩溃退出（0x" in normalized
         )
 

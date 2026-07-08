@@ -3965,6 +3965,9 @@ def test_handle_connect_tcp_success_updates_recent_target_history() -> None:
     older_device = make_device("192.168.1.112:5555")
     controller.devices = [current_device, older_device]
     controller.recent_targets = ["192.168.1.112:5555", "192.168.1.113:5555"]
+    status_updates: list[str] = []
+
+    controller._update_status = lambda: status_updates.append("status")
 
     gui.LogcatToolGUI._handle_connect_tcp_success(
         controller,
@@ -3985,6 +3988,53 @@ def test_handle_connect_tcp_success_updates_recent_target_history() -> None:
         "192.168.1.112:5555",
         "192.168.1.113:5555",
     )
+    assert status_updates == ["status"]
+
+
+def test_handle_wireless_adb_success_updates_status_once() -> None:
+    controller = make_controller()
+    usb_device = make_device("USB123")
+    tcp_device = make_device("192.168.1.111:5555")
+    controller.devices = [usb_device, tcp_device]
+    status_updates: list[str] = []
+
+    controller._update_status = lambda: status_updates.append("status")
+
+    gui.LogcatToolGUI._handle_wireless_adb_success(
+        controller,
+        (
+            tcp_device.serial,
+            f"connected to {tcp_device.serial}",
+            [usb_device, tcp_device],
+        ),
+    )
+
+    assert controller.device_var.get() == gui.device_label(tcp_device)
+    assert controller.status.active_device_serial == tcp_device.serial
+    assert controller.status.last_error == f"connected to {tcp_device.serial}"
+    assert status_updates == ["status"]
+
+
+def test_handle_configure_adb_path_success_updates_status_once() -> None:
+    controller = make_controller()
+    device = make_device("USB123")
+    status_updates: list[str] = []
+
+    controller._update_status = lambda: status_updates.append("status")
+
+    gui.LogcatToolGUI._handle_configure_adb_path_success(
+        controller,
+        (
+            "已切换 ADB：C:/Android/platform-tools/adb.exe",
+            [device],
+            Path("C:/Android/platform-tools/adb.exe"),
+            "C:/Android/platform-tools/adb.exe",
+        ),
+    )
+
+    assert controller.status.adb_path == "C:/Android/platform-tools/adb.exe"
+    assert controller.status.last_error == "已切换 ADB：C:/Android/platform-tools/adb.exe"
+    assert status_updates == ["status"]
 
 
 def test_save_session_state_persists_recent_target_history(monkeypatch) -> None:

@@ -783,7 +783,7 @@ class LogcatToolGUI:
         preserved_devices.append(stale_target)
         return preserved_devices, stale_target
 
-    def _apply_devices(self, devices: list[DeviceInfo]) -> None:
+    def _apply_devices(self, devices: list[DeviceInfo], *, update_status: bool = True) -> None:
         self.status.adb_path = str(resolve_adb_path())
         current_label = self.device_var.get()
         preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
@@ -805,7 +805,8 @@ class LogcatToolGUI:
         self.status.last_error = ""
         if not preserve_stream_target:
             self._sync_selected_device(update_status=False)
-        self._update_status()
+        if update_status:
+            self._update_status()
 
     def _handle_refresh_devices_error(self, exc: Exception) -> None:
         self.status.adb_path = str(resolve_adb_path())
@@ -968,7 +969,7 @@ class LogcatToolGUI:
         target, message, devices = result
         self._remember_connect_target(target)
         self.connect_var.set(target)
-        self._apply_devices(devices)
+        self._apply_devices(devices, update_status=False)
         self._select_device_by_serial(target)
         self.status.last_error = message or f"已连接 {target}"
         self._update_status()
@@ -1093,7 +1094,7 @@ class LogcatToolGUI:
         if target:
             self._remember_connect_target(target)
             self.connect_var.set(target)
-        self._apply_devices(devices)
+        self._apply_devices(devices, update_status=False)
         if target:
             self._select_device_by_serial(target)
         self.status.last_error = message
@@ -1606,7 +1607,7 @@ class LogcatToolGUI:
         return list_devices()
 
     def _handle_restart_adb_success(self, devices: list[DeviceInfo]) -> None:
-        self._apply_devices(devices)
+        self._apply_devices(devices, update_status=False)
         self.status.last_error = ""
         self._update_status()
 
@@ -1682,7 +1683,7 @@ class LogcatToolGUI:
     ) -> None:
         message, devices, selected_path, resolved_path = result
         set_manual_adb_path(selected_path)
-        self._apply_devices(devices)
+        self._apply_devices(devices, update_status=False)
         self.status.adb_path = resolved_path
         self.status.last_error = message
         self._update_status()

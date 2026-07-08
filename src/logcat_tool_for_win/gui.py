@@ -1892,6 +1892,23 @@ class LogcatToolGUI:
             self.status.last_error = "重连设备不可用。"
         self._update_status()
 
+    def _handle_stream_runtime_failure(self, message: str) -> bool:
+        if not message:
+            return False
+        if not (
+            self._is_adb_launch_failure_message(message)
+            or self._is_local_adb_service_failure_message(message)
+        ):
+            return False
+        self._handle_refresh_devices_error(RuntimeError(message))
+        self.status.stream_state = "failed"
+        self.status.reconnect_attempt = 0
+        self.reconnect_target_serial = ""
+        if self._show_adb_launch_recovery_prompt(message):
+            return True
+        self._show_local_adb_service_recovery_prompt(message)
+        return True
+
     def _poll_stream(self) -> None:
         self._poll_stream_callback_id = None
         updated = False
@@ -1933,6 +1950,9 @@ class LogcatToolGUI:
                 full_render_required = full_render_required or entry_full_render_required
             elif event.kind == "stderr":
                 if self.manual_stop or self.status.stream_state not in {"streaming", "reconnecting"}:
+                    continue
+                if self._handle_stream_runtime_failure(event.message):
+                    status_dirty = False
                     continue
                 if self.status.last_error != event.message:
                     self.status.last_error = event.message

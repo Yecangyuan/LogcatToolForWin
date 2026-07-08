@@ -4,6 +4,7 @@ import queue
 import re
 import subprocess
 import threading
+from pathlib import Path
 from typing import Callable, Optional
 
 import logcat_tool_for_win.adb as adb_module
@@ -58,17 +59,37 @@ class LogcatSession:
         launch_kwargs = list(iter_adb_process_kwargs(bufsize=1))
         if adb_module._is_windows():
             launch_kwargs.extend(iter_adb_process_kwargs(bufsize=1, merge_stderr=True))
-        for attempt_index, process_kwargs in enumerate(launch_kwargs):
-            try:
-                self.process = self.popen_factory(self.command, **process_kwargs)
+        launch_commands = self._iter_launch_commands()
+        for command_index, command in enumerate(launch_commands):
+            for attempt_index, process_kwargs in enumerate(launch_kwargs):
+                try:
+                    self.process = self.popen_factory(command, **process_kwargs)
+                    self.command = command
+                    break
+                except OSError as exc:
+                    if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
+                        continue
+                    if _is_invalid_windows_handle(exc) and command_index + 1 < len(launch_commands):
+                        break
+                    raise
+            if self.process is not None:
                 break
-            except OSError as exc:
-                if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
-                    continue
-                raise
         self.events.put(StreamEvent(kind="started"))
         self.worker = threading.Thread(target=self._pump, daemon=True)
         self.worker.start()
+
+    def _iter_launch_commands(self) -> list[list[str]]:
+        if not self.command:
+            return [self.command]
+        commands = [self.command]
+        seen = {str(Path(self.command[0])).lower()}
+        for adb_path in adb_module.iter_adb_paths():
+            key = str(adb_path).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            commands.append([str(adb_path), *self.command[1:]])
+        return commands
 
     def _pump(self) -> None:
         assert self.process is not None

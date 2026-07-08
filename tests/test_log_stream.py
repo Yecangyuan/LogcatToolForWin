@@ -2,6 +2,7 @@ import io
 import queue
 import subprocess
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -342,6 +343,39 @@ def test_session_falls_back_to_merged_output_after_all_invalid_windows_handle_re
     assert len(captured_kwargs) == 5
     assert captured_kwargs[4]["stdout"] == subprocess.PIPE
     assert captured_kwargs[4]["stderr"] == subprocess.STDOUT
+
+
+def test_session_falls_back_to_next_adb_path_after_invalid_handle_launch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_windows_startupinfo,
+) -> None:
+    events: queue.Queue = queue.Queue()
+    captured_commands: list[list[str]] = []
+    failing_adb = Path("C:/bad/adb.exe")
+    fallback_adb = Path("C:/good/adb.exe")
+
+    def popen_factory(command, **kwargs):
+        captured_commands.append(command)
+        if command[0] == str(failing_adb):
+            exc = OSError("[WinError 6] 句柄无效。")
+            exc.winerror = 6
+            raise exc
+        return FakePopen()
+
+    monkeypatch.setattr("logcat_tool_for_win.log_stream.adb_module._is_windows", lambda: True)
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream.adb_module.iter_adb_paths",
+        lambda: iter((failing_adb, fallback_adb)),
+    )
+
+    session = LogcatSession([str(failing_adb), "logcat"], events, popen_factory)
+
+    session.start()
+    session.join()
+
+    assert captured_commands[0][0] == str(failing_adb)
+    assert captured_commands[-1][0] == str(fallback_adb)
+    assert any(event.kind == "started" for event in list(events.queue))
 
 
 def test_session_stop_kills_process_when_terminate_times_out() -> None:

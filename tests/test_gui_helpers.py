@@ -2604,6 +2604,43 @@ def test_handle_connect_tcp_error_explains_usb_to_wireless_next_step(monkeypatch
     assert controller.status.last_error == errors[0][1]
 
 
+def test_handle_connect_tcp_error_does_not_duplicate_usb_retry_guidance_after_auto_retry(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    errors: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda title, message: errors.append((title, message)),
+        ),
+    )
+
+    gui.LogcatToolGUI._handle_connect_tcp_error(
+        controller,
+        ADBCommandError(
+            "failed to connect to 192.168.1.111:5555: Connection refused\n\n"
+            "已尝试为当前 USB 设备 USB123 自动开启无线 ADB 后再连接，"
+            "但仍失败：目标端口拒绝连接。通常是手机端还没监听该端口；"
+            "请先用 USB 连上后点“USB 开启无线”，再重新连接。"
+        ),
+    )
+
+    assert errors == [
+        (
+            "连接失败",
+            "failed to connect to 192.168.1.111:5555: Connection refused\n\n"
+            "已尝试为当前 USB 设备 USB123 自动开启无线 ADB 后再连接，"
+            "但仍失败：目标端口拒绝连接。通常是手机端还没监听该端口；"
+            "请先用 USB 连上后点“USB 开启无线”，再重新连接。",
+        )
+    ]
+    assert controller.status.last_error == errors[0][1]
+
+
 def test_handle_connect_tcp_error_offers_to_restart_adb_for_local_service_failures(
     monkeypatch,
 ) -> None:

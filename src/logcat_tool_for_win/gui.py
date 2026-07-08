@@ -1295,6 +1295,8 @@ class LogcatToolGUI:
             return message
         if self._is_local_adb_service_failure_message(message):
             return message
+        if "已尝试为当前 USB 设备 " in message or "已检测到当前 USB 设备 " in message:
+            return message
         usb_ip_hint = getattr(exc, "usb_ip_hint", "").strip()
         diagnostics = f"\n\n{usb_ip_hint}" if usb_ip_hint else ""
         return (

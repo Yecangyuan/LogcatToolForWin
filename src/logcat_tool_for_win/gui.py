@@ -884,6 +884,13 @@ class LogcatToolGUI:
                 task_key=DEVICE_SYNC_TASK_KEY,
             )
             return
+        if raw_target.isdigit():
+            wireless_warning = self._wireless_prepare_warning_for_selected_device()
+            if wireless_warning is not None:
+                messagebox.showwarning(*wireless_warning)
+            else:
+                messagebox.showwarning("需要 USB 设备", "请先选择通过 USB 连接的设备。")
+            return
         try:
             target = normalize_tcp_target(raw_target)
         except ValueError as exc:

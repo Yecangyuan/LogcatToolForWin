@@ -1995,6 +1995,55 @@ def test_refresh_devices_offers_to_switch_adb_path_when_adb_is_missing(monkeypat
     assert controller.status.last_error == prompts[0][1]
 
 
+def test_refresh_devices_offers_to_switch_adb_path_when_no_usable_adb_is_found(monkeypatch) -> None:
+    controller = make_controller()
+    stale_device = make_device("R58M12345")
+    stale_label = gui.device_label(stale_device)
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    def raise_refresh_error() -> list[DeviceInfo]:
+        raise RuntimeError("未找到可用 adb：C:/Android/platform-tools/adb.exe")
+
+    monkeypatch.setattr(gui, "list_devices", raise_refresh_error)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("missing usable adb should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.refresh_devices(controller)
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "未找到可用 adb：C:/Android/platform-tools/adb.exe\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.adb_ready is False
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_refresh_devices_async_schedules_list_devices(monkeypatch) -> None:
     controller = make_controller()
     device = make_device("R58M12345")
@@ -3603,6 +3652,64 @@ def test_start_stream_offers_to_switch_adb_path_when_adb_is_missing(monkeypatch)
         (
             "ADB 无法启动",
             "未找到 adb：C:/missing/adb.exe\n\n"
+            "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
+            "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip。\n\n"
+            "是否现在切换 ADB 路径？",
+        )
+    ]
+    assert configure_calls == ["configure"]
+    assert controller.status.last_error == prompts[0][1]
+
+
+def test_start_stream_offers_to_switch_adb_path_when_no_usable_adb_is_found(monkeypatch) -> None:
+    controller = make_controller()
+    selected_device = make_device("R58M12345")
+    selected_label = gui.device_label(selected_device)
+    prompts: list[tuple[str, str]] = []
+    configure_calls: list[str] = []
+
+    controller.devices = [selected_device]
+    controller.device_var.set(selected_label)
+    controller.device_combo["values"] = [selected_label]
+    controller.status.active_device_serial = selected_device.serial
+    controller.status.adb_ready = True
+    controller._current_device = lambda: selected_device
+    controller._stop_active_session = lambda manual: None
+    controller._update_status = lambda: None
+    controller.configure_adb_path = lambda: configure_calls.append("configure")
+
+    class FailingSession:
+        def __init__(self, command: list[str], events: queue.Queue[StreamEvent]) -> None:
+            pass
+
+        def start(self) -> None:
+            raise RuntimeError("未找到可用 adb：C:/Android/platform-tools/adb.exe")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("missing usable adb should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "build_logcat_command",
+        lambda serial, filter_state: ["adb", "-s", serial, "logcat"],
+    )
+    monkeypatch.setattr(gui, "LogcatSession", FailingSession)
+
+    gui.LogcatToolGUI.start_stream(controller)
+
+    assert prompts == [
+        (
+            "ADB 无法启动",
+            "未找到可用 adb：C:/Android/platform-tools/adb.exe\n\n"
             "可直接点界面里的“ADB 路径”切换到外部 adb.exe；"
             "如果你在 Windows 7 / 8.0 上运行，请改用 Releases 里的 "
             "logcat-tool-for-win-legacy-win7.zip。\n\n"

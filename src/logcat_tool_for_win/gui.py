@@ -529,11 +529,13 @@ class LogcatToolGUI:
     def _handle_filter_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
             return
+        self.filters = self._current_filters()
         self._schedule_filter_refresh("full")
 
     def _handle_highlight_trace(self, *_args: object) -> None:
         if self._filter_refresh_suspended:
             return
+        self.highlight_rules = self._current_highlight_rules()
         self._schedule_filter_refresh("highlight")
 
     def _handle_auto_scroll_trace(self, *_args: object) -> None:
@@ -1918,11 +1920,9 @@ class LogcatToolGUI:
                     self.status.last_error = ""
                     status_dirty = True
                 if filters_snapshot is None:
-                    filters_snapshot = self._current_filters()
+                    filters_snapshot = self.filters
                     prepared_filters_snapshot = prepare_filter_state(filters_snapshot)
-                    highlight_rules_snapshot = self._current_highlight_rules()
-                    self.filters = filters_snapshot
-                    self.highlight_rules = highlight_rules_snapshot
+                    highlight_rules_snapshot = self.highlight_rules
                 visible_entry, entry_full_render_required = self._append_entry(
                     event.entry,
                     filters_snapshot,
@@ -1967,13 +1967,11 @@ class LogcatToolGUI:
     ) -> tuple[Optional[LogEntry], bool]:
         self.raw_lines.append(entry)
         if filters is None:
-            filters = self._current_filters()
+            filters = self.filters
         if prepared_filters is None:
             prepared_filters = prepare_filter_state(filters)
         if rules is None:
-            rules = self._current_highlight_rules()
-        self.filters = filters
-        self.highlight_rules = rules
+            rules = self.highlight_rules
         entry.matches_filters = entry_matches_prepared(entry, prepared_filters)
         if entry.matches_filters or not filters.match_only:
             entry.highlight_keys = match_highlight_rules(entry, rules)

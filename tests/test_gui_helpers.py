@@ -775,7 +775,7 @@ def test_refresh_visible_entries_skips_highlight_matching_for_hidden_match_only_
     assert visible_entry.highlight_keys == ("line",)
 
 
-def test_poll_stream_reuses_filter_snapshot_for_line_batch() -> None:
+def test_poll_stream_uses_cached_filter_snapshot_for_line_batch() -> None:
     controller = make_controller()
     controller.status.stream_state = "streaming"
     controller.manual_stop = False
@@ -783,26 +783,45 @@ def test_poll_stream_reuses_filter_snapshot_for_line_batch() -> None:
         controller.events.put(StreamEvent(kind="line", entry=make_entry(f"line {index}")))
     filters = FilterState(minimum_level="E")
     rules = [HighlightRule(name="line", pattern="line", foreground="#fff")]
-    calls: list[str] = []
-
-    def current_filters() -> FilterState:
-        calls.append("filters")
-        return filters
-
-    def current_highlight_rules() -> list[HighlightRule]:
-        calls.append("rules")
-        return rules
-
-    controller._current_filters = current_filters
-    controller._current_highlight_rules = current_highlight_rules
+    controller.filters = filters
+    controller.highlight_rules = rules
+    controller._current_filters = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached filters")
+    )
+    controller._current_highlight_rules = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached highlight rules")
+    )
 
     gui.LogcatToolGUI._poll_stream(controller)
 
-    assert calls == ["filters", "rules"]
     assert len(controller.raw_lines) == 3
     assert len(controller.visible_lines) == 3
     assert controller.filters is filters
     assert controller.highlight_rules is rules
+
+
+def test_poll_stream_reuses_cached_filters_and_highlight_rules_across_line_batches() -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.manual_stop = False
+    controller.filters = FilterState(minimum_level="E")
+    controller.highlight_rules = [HighlightRule(name="line", pattern="line", foreground="#fff")]
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("line 1")))
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("line 2")))
+
+    controller._current_filters = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached filters")
+    )
+    controller._current_highlight_rules = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached highlight rules")
+    )
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert len(controller.raw_lines) == 2
+    assert len(controller.visible_lines) == 2
+    assert controller.filters.minimum_level == "E"
+    assert controller.highlight_rules[0].name == "line"
 
 
 def test_poll_stream_prepares_keyword_filter_once_for_line_batch() -> None:
@@ -813,14 +832,24 @@ def test_poll_stream_prepares_keyword_filter_once_for_line_batch() -> None:
         controller.events.put(StreamEvent(kind="line", entry=make_entry(f"crash {index}")))
     keyword = LowerCountingStr("CRASH")
     filters = FilterState(minimum_level="V", keyword=keyword)
-
-    controller._current_filters = lambda: filters
-    controller._current_highlight_rules = lambda: []
+    controller.filters = filters
+    controller.highlight_rules = []
 
     gui.LogcatToolGUI._poll_stream(controller)
 
     assert keyword.lower_calls == 1
     assert len(controller.visible_lines) == 3
+
+
+def test_handle_filter_trace_updates_cached_filters_before_refresh() -> None:
+    controller = make_controller()
+    controller.level_var.set("W")
+    controller.keyword_var.set("timeout")
+
+    gui.LogcatToolGUI._handle_filter_trace(controller)
+
+    assert controller.filters.minimum_level == "W"
+    assert controller.filters.keyword == "timeout"
 
 
 def test_refresh_visible_entries_prepares_keyword_filter_once_for_raw_log_batch() -> None:

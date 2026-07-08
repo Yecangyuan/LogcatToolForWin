@@ -2003,9 +2003,7 @@ class LogcatToolGUI:
 
     def _refresh_highlight_entries(self) -> None:
         self._invalidate_pending_filter_refreshes()
-        rules = self._current_highlight_rules()
-        self.filters = self._current_filters()
-        self.highlight_rules = rules
+        rules = self.highlight_rules
         for entry in self.visible_lines:
             entry.highlight_keys = match_highlight_rules(entry, rules)
         self._render_visible()

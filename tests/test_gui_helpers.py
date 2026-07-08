@@ -1021,6 +1021,26 @@ def test_highlight_refresh_invalidates_pending_debounced_filter_refresh() -> Non
     assert renders == ["render"]
 
 
+def test_refresh_highlight_entries_reuses_cached_filters_and_rules() -> None:
+    controller = make_controller()
+    visible_entry = make_entry("visible line")
+    controller.visible_lines.extend([visible_entry])
+    controller.filters = FilterState(minimum_level="W")
+    controller.highlight_rules = [HighlightRule(name="line", pattern="line", foreground="#fff")]
+    controller._current_filters = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached filters")
+    )
+    controller._current_highlight_rules = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached highlight rules")
+    )
+
+    gui.LogcatToolGUI._refresh_highlight_entries(controller)
+
+    assert visible_entry.highlight_keys == ("line",)
+    assert controller.filters.minimum_level == "W"
+    assert controller.highlight_rules[0].name == "line"
+
+
 def test_load_named_preset_batches_filter_refreshes() -> None:
     controller = make_controller()
     refreshes: list[str] = []

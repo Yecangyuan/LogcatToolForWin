@@ -29,6 +29,7 @@ from logcat_tool_for_win.adb import (
     extract_tcp_port,
     get_manual_adb_path,
     get_device_route_ip,
+    is_adb_auth_failure_message,
     is_local_adb_service_failure_message,
     list_devices,
     normalize_tcp_target,
@@ -1129,6 +1130,8 @@ class LogcatToolGUI:
                 raise
             if self._is_local_adb_service_failure_message(str(exc)):
                 raise
+            if is_adb_auth_failure_message(str(exc)):
+                raise
             if selected_usb_device is None:
                 raise
             route_ip = self._route_ip_for_serial(selected_usb_device.serial)
@@ -1294,6 +1297,8 @@ class LogcatToolGUI:
         if self._is_adb_launch_failure_message(message):
             return message
         if self._is_local_adb_service_failure_message(message):
+            return message
+        if is_adb_auth_failure_message(message):
             return message
         if "已尝试为当前 USB 设备 " in message or "已检测到当前 USB 设备 " in message:
             return message

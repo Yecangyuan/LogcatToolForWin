@@ -45,6 +45,10 @@ LOCAL_ADB_SERVICE_FAILURE_PATTERNS = (
     "adb server didn't ack",
     "cannot bind listener",
 )
+ADB_AUTH_FAILURE_PATTERNS = (
+    "failed to authenticate",
+    "unauthorized",
+)
 
 
 class ADBCommandError(RuntimeError):
@@ -354,7 +358,7 @@ def _specific_connect_failure_hint(target: str, message: str) -> str:
     host = target.rsplit(":", 1)[0]
     if is_local_adb_service_failure_message(message):
         return "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
-    if "failed to authenticate" in lowered or "unauthorized" in lowered:
+    if is_adb_auth_failure_message(message):
         return (
             "设备鉴权失败。请先解锁手机并在屏幕上允许 USB 调试授权；"
             "如果手机上没有弹出授权框，可先断开后重新插上 USB，或撤销 USB 调试授权后重试。"
@@ -398,7 +402,7 @@ def _should_retry_connect_error(target: str, message: str) -> bool:
         return False
     if is_local_adb_service_failure_message(normalized):
         return False
-    if "failed to authenticate" in lowered or "unauthorized" in lowered:
+    if is_adb_auth_failure_message(normalized):
         return False
     if lowered.startswith("failed to connect to ") or lowered.startswith("unable to connect to "):
         return False
@@ -468,6 +472,11 @@ def _is_adb_launch_failure_message(message: str) -> bool:
 def is_local_adb_service_failure_message(message: str) -> bool:
     normalized = message.strip().lower()
     return any(pattern in normalized for pattern in LOCAL_ADB_SERVICE_FAILURE_PATTERNS)
+
+
+def is_adb_auth_failure_message(message: str) -> bool:
+    normalized = message.strip().lower()
+    return any(pattern in normalized for pattern in ADB_AUTH_FAILURE_PATTERNS) or "设备鉴权失败" in message
 
 
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:

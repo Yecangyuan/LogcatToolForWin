@@ -1528,7 +1528,12 @@ class LogcatToolGUI:
         self.raw_lines.clear()
         self.visible_lines.clear()
         self._discard_pending_line_events()
+        queue_depth = self.events.qsize()
+        status_changed = self.status.queue_depth != queue_depth
+        self.status.queue_depth = queue_depth
         self._render_visible()
+        if status_changed:
+            self._update_status()
 
     def clear_device_logcat(self) -> None:
         if not self.status.adb_ready:

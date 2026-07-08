@@ -520,6 +520,53 @@ def test_session_reports_actionable_error_when_all_adb_candidates_fail_invalid_h
     assert events.empty()
 
 
+def test_session_reports_missing_adb_when_all_launch_candidates_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: queue.Queue = queue.Queue()
+    failing_adb = Path("C:/bad/adb.exe")
+    fallback_adb = Path("C:/good/adb.exe")
+
+    def popen_factory(command, **kwargs):
+        raise FileNotFoundError("missing")
+
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream.adb_module.iter_adb_paths",
+        lambda: iter((failing_adb, fallback_adb)),
+    )
+
+    session = LogcatSession([str(failing_adb), "logcat"], events, popen_factory)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        session.start()
+
+    assert str(exc_info.value) == "未找到 adb：C:/good/adb.exe"
+    assert events.empty()
+
+
+def test_session_reports_permission_error_when_adb_cannot_be_executed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: queue.Queue = queue.Queue()
+    failing_adb = Path("C:/bad/adb.exe")
+
+    def popen_factory(command, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream.adb_module.iter_adb_paths",
+        lambda: iter((failing_adb,)),
+    )
+
+    session = LogcatSession([str(failing_adb), "logcat"], events, popen_factory)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        session.start()
+
+    assert str(exc_info.value) == "无法执行 adb，请检查权限：C:/bad/adb.exe"
+    assert events.empty()
+
+
 def test_session_stop_kills_process_when_terminate_times_out() -> None:
     events: queue.Queue = queue.Queue()
     process = StubbornPopen()

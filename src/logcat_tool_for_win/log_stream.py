@@ -69,6 +69,12 @@ class LogcatSession:
             for attempt_index, process_kwargs in enumerate(launch_kwargs):
                 try:
                     process = self.popen_factory(command, **process_kwargs)
+                except FileNotFoundError as exc:
+                    if command_index + 1 < len(launch_commands):
+                        break
+                    raise RuntimeError(f"未找到 adb：{command[0]}") from exc
+                except PermissionError as exc:
+                    raise RuntimeError(f"无法执行 adb，请检查权限：{command[0]}") from exc
                 except OSError as exc:
                     if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
                         last_invalid_handle_error = exc

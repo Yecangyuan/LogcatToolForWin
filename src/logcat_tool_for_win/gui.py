@@ -896,18 +896,15 @@ class LogcatToolGUI:
         except ValueError as exc:
             if selected_usb_device is not None:
                 if ":" not in raw_target:
-                    self._run_background_task(
-                        f"正在为 {selected_usb_device.serial} 开启无线 ADB...",
-                        lambda: self._prepare_wireless_adb(selected_usb_device.serial, DEFAULT_TCP_PORT),
-                        self._handle_wireless_adb_success,
-                        self._handle_wireless_adb_error,
-                        task_key=DEVICE_SYNC_TASK_KEY,
-                    )
+                    messagebox.showwarning("TCP 目标无效", str(exc))
                     return
                 _host_text, port_text = (part.strip() for part in raw_target.rsplit(":", 1))
                 try:
                     port = validate_tcp_port(int(port_text))
-                except ValueError:
+                except ValueError as port_exc:
+                    messagebox.showwarning("TCP 端口无效", str(port_exc))
+                    return
+                if _host_text:
                     messagebox.showwarning("TCP 目标无效", str(exc))
                     return
                 self._run_background_task(
@@ -1008,8 +1005,9 @@ class LogcatToolGUI:
         raw_target = self.connect_var.get().strip()
         try:
             port, preferred_target = self._resolve_wireless_connect_preferences(raw_target)
-        except Exception as exc:
-            messagebox.showwarning("TCP 端口无效", str(exc))
+        except ValueError as exc:
+            title = "TCP 端口无效" if str(exc).startswith("无效的 TCP 端口") else "TCP 目标无效"
+            messagebox.showwarning(title, str(exc))
             return
 
         self._run_background_task(
@@ -1027,20 +1025,16 @@ class LogcatToolGUI:
         if ":" not in stripped:
             if stripped.isdigit():
                 return validate_tcp_port(int(stripped)), ""
-            try:
-                return DEFAULT_TCP_PORT, normalize_tcp_target(stripped)
-            except ValueError:
-                return DEFAULT_TCP_PORT, ""
+            return DEFAULT_TCP_PORT, normalize_tcp_target(stripped)
 
         host_text, port_text = (part.strip() for part in stripped.rsplit(":", 1))
         try:
             port = validate_tcp_port(int(port_text))
         except ValueError as exc:
             raise ValueError(f"无效的 TCP 端口：{port_text}") from exc
-        try:
-            return port, normalize_tcp_target(f"{host_text}:{port}")
-        except ValueError:
+        if not host_text:
             return port, ""
+        return port, normalize_tcp_target(f"{host_text}:{port}")
 
     def _prepare_wireless_adb(
         self,

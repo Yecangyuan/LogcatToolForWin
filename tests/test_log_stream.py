@@ -567,6 +567,29 @@ def test_session_reports_permission_error_when_adb_cannot_be_executed(
     assert events.empty()
 
 
+def test_session_reports_generic_oserror_when_adb_launch_fails_for_other_reasons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: queue.Queue = queue.Queue()
+    failing_adb = Path("C:/bad/adb.exe")
+
+    def popen_factory(command, **kwargs):
+        raise OSError("launch failed")
+
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream.adb_module.iter_adb_paths",
+        lambda: iter((failing_adb,)),
+    )
+
+    session = LogcatSession([str(failing_adb), "logcat"], events, popen_factory)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        session.start()
+
+    assert str(exc_info.value) == "无法启动 adb：launch failed"
+    assert events.empty()
+
+
 def test_session_stop_kills_process_when_terminate_times_out() -> None:
     events: queue.Queue = queue.Queue()
     process = StubbornPopen()

@@ -84,7 +84,7 @@ class LogcatSession:
                         break
                     if _is_invalid_windows_handle(exc):
                         raise _format_invalid_handle_adb_error(launch_paths, exc) from exc
-                    raise
+                    raise RuntimeError(f"无法启动 adb：{exc}") from exc
                 returncode = self._current_process_returncode(process)
                 if _is_windows_access_violation_returncode(returncode):
                     if command_index + 1 < len(launch_commands):

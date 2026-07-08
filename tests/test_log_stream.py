@@ -206,6 +206,32 @@ class StuckStderrPopen:
         return self.returncode
 
 
+class CrashedPopen:
+    def __init__(self) -> None:
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO("")
+        self.returncode = 0xC0000005
+
+    def terminate(self) -> None:
+        self.returncode = 0xC0000005
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
+class FailedExitPopen:
+    def __init__(self) -> None:
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO("")
+        self.returncode = 3
+
+    def terminate(self) -> None:
+        self.returncode = 3
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+
 def test_parse_threadtime_line_extracts_fields() -> None:
     entry = parse_threadtime_line("06-18 12:00:00.000  1234  1235 E MyApp: crash")
     assert entry.level == "E"
@@ -523,6 +549,56 @@ def test_session_emits_stopped_when_stderr_read_hangs() -> None:
     assert received == [
         ("started", ""),
         ("stderr", "读取 logcat 错误输出超时。"),
+        ("stopped", ""),
+    ]
+
+
+def test_session_emits_actionable_stderr_when_adb_crashes_immediately_after_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: queue.Queue = queue.Queue()
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream._is_windows_access_violation_returncode",
+        lambda returncode: returncode == 0xC0000005,
+    )
+    session = LogcatSession(["C:/good/adb.exe", "logcat"], events, lambda *args, **kwargs: CrashedPopen())
+
+    session.start()
+    session.join()
+
+    received = []
+    while not events.empty():
+        event = events.get()
+        received.append((event.kind, event.message))
+
+    assert received == [
+        ("started", ""),
+        (
+            "stderr",
+            "adb.exe 启动后崩溃退出（0xC0000005）\n"
+            "已尝试的 adb：C:/good/adb.exe\n"
+            "当前 adb 在这个 Windows 环境里无法正常启动。如果你在较老的 Windows 上运行，请优先使用 Releases 里的 "
+            "logcat-tool-for-win-legacy-win7.zip；也可以安装可用的 Android platform-tools，并用 LOGCAT_TOOL_ADB 指向 adb.exe。",
+        ),
+        ("stopped", ""),
+    ]
+
+
+def test_session_emits_generic_stderr_when_logcat_exits_nonzero_without_output() -> None:
+    events: queue.Queue = queue.Queue()
+    session = LogcatSession(["adb", "logcat"], events, lambda *args, **kwargs: FailedExitPopen())
+
+    session.start()
+    session.join()
+
+    received = []
+    while not events.empty():
+        event = events.get()
+        received.append((event.kind, event.message))
+
+    assert received == [
+        ("started", ""),
+        ("stderr", "logcat 进程异常退出，代码：3"),
         ("stopped", ""),
     ]
 

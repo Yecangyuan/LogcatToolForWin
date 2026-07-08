@@ -9,7 +9,9 @@ from typing import Callable, Optional
 
 import logcat_tool_for_win.adb as adb_module
 from logcat_tool_for_win.adb import (
+    _format_crashed_adb_error,
     _is_invalid_windows_handle,
+    _is_windows_access_violation_returncode,
     iter_adb_process_kwargs,
 )
 from logcat_tool_for_win.models import LogEntry, StreamEvent
@@ -125,10 +127,29 @@ class LogcatSession:
                 stderr_messages.append("读取 logcat 错误输出超时。")
             if pump_error:
                 stderr_messages.append(pump_error)
+            if not stderr_messages:
+                exit_message = self._process_exit_message()
+                if exit_message:
+                    stderr_messages.append(exit_message)
             if stderr_messages:
                 self.events.put(StreamEvent(kind="stderr", message="\n".join(stderr_messages)))
 
             self.events.put(StreamEvent(kind="stopped"))
+
+    def _process_exit_message(self) -> str:
+        assert self.process is not None
+        returncode = getattr(self.process, "returncode", None)
+        poll = getattr(self.process, "poll", None)
+        if returncode is None and callable(poll):
+            try:
+                returncode = poll()
+            except Exception:
+                returncode = getattr(self.process, "returncode", None)
+        if not returncode:
+            return ""
+        if _is_windows_access_violation_returncode(returncode):
+            return str(_format_crashed_adb_error([Path(self.command[0])], returncode))
+        return f"logcat 进程异常退出，代码：{returncode}"
 
     def stop(self) -> None:
         if self.process is None:

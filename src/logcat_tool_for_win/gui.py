@@ -1115,8 +1115,8 @@ class LogcatToolGUI:
     def _wireless_prepare_warning_for_selected_device(self) -> Optional[tuple[str, str]]:
         try:
             device = self._current_device()
-        except ValueError:
-            return None
+        except ValueError as exc:
+            return "需要选择设备", str(exc)
         if device.transport != "usb":
             return "需要 USB 设备", "请先选择通过 USB 连接的设备。"
         if device.state != "device":

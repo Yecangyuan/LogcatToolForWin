@@ -3676,6 +3676,7 @@ def test_start_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch)
     selected_label = gui.device_label(selected_device)
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
+    status_updates: list[str] = []
 
     controller.devices = [selected_device]
     controller.device_var.set(selected_label)
@@ -3684,7 +3685,7 @@ def test_start_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch)
     controller.status.adb_ready = True
     controller._current_device = lambda: selected_device
     controller._stop_active_session = lambda manual: None
-    controller._update_status = lambda: None
+    controller._update_status = lambda: status_updates.append("status")
     controller.configure_adb_path = lambda: configure_calls.append("configure")
 
     class FailingSession:
@@ -3733,6 +3734,7 @@ def test_start_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch)
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == prompts[0][1]
+    assert status_updates == ["status", "status"]
 
 
 def test_start_stream_offers_to_switch_adb_path_when_adb_is_missing(monkeypatch) -> None:

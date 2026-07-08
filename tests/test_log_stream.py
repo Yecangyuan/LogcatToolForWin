@@ -487,6 +487,39 @@ def test_session_falls_back_to_next_adb_path_after_immediate_access_violation_cr
     assert [event.kind for event in list(events.queue)] == ["started", "line", "stderr", "stopped"]
 
 
+def test_session_reports_actionable_error_when_all_adb_candidates_fail_invalid_handle(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_windows_startupinfo,
+) -> None:
+    events: queue.Queue = queue.Queue()
+    failing_adb = Path("C:/bad/adb.exe")
+    fallback_adb = Path("C:/good/adb.exe")
+
+    def popen_factory(command, **kwargs):
+        exc = OSError("[WinError 6] 句柄无效。")
+        exc.winerror = 6
+        raise exc
+
+    monkeypatch.setattr("logcat_tool_for_win.log_stream.adb_module._is_windows", lambda: True)
+    monkeypatch.setattr(
+        "logcat_tool_for_win.log_stream.adb_module.iter_adb_paths",
+        lambda: iter((failing_adb, fallback_adb)),
+    )
+
+    session = LogcatSession([str(failing_adb), "logcat"], events, popen_factory)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        session.start()
+
+    assert str(exc_info.value) == (
+        "无法启动 adb：[WinError 6] 句柄无效。\n"
+        "已尝试的 adb：C:/bad/adb.exe；C:/good/adb.exe\n"
+        "当前 adb 在这个 Windows 环境里无法正常启动。如果你在较老的 Windows 上运行，请优先使用 Releases 里的 "
+        "logcat-tool-for-win-legacy-win7.zip；也可以安装可用的 Android platform-tools，并用 LOGCAT_TOOL_ADB 指向 adb.exe。"
+    )
+    assert events.empty()
+
+
 def test_session_stop_kills_process_when_terminate_times_out() -> None:
     events: queue.Queue = queue.Queue()
     process = StubbornPopen()

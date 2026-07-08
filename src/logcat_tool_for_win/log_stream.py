@@ -10,6 +10,7 @@ from typing import Callable, Optional
 import logcat_tool_for_win.adb as adb_module
 from logcat_tool_for_win.adb import (
     _format_crashed_adb_error,
+    _format_invalid_handle_adb_error,
     _is_invalid_windows_handle,
     _is_windows_access_violation_returncode,
     iter_adb_process_kwargs,
@@ -63,15 +64,20 @@ class LogcatSession:
             launch_kwargs.extend(iter_adb_process_kwargs(bufsize=1, merge_stderr=True))
         launch_commands = self._iter_launch_commands()
         launch_paths = [Path(command[0]) for command in launch_commands]
+        last_invalid_handle_error: Optional[OSError] = None
         for command_index, command in enumerate(launch_commands):
             for attempt_index, process_kwargs in enumerate(launch_kwargs):
                 try:
                     process = self.popen_factory(command, **process_kwargs)
                 except OSError as exc:
                     if attempt_index + 1 < len(launch_kwargs) and _is_invalid_windows_handle(exc):
+                        last_invalid_handle_error = exc
                         continue
                     if _is_invalid_windows_handle(exc) and command_index + 1 < len(launch_commands):
+                        last_invalid_handle_error = exc
                         break
+                    if _is_invalid_windows_handle(exc):
+                        raise _format_invalid_handle_adb_error(launch_paths, exc) from exc
                     raise
                 returncode = self._current_process_returncode(process)
                 if _is_windows_access_violation_returncode(returncode):
@@ -84,6 +90,8 @@ class LogcatSession:
                 break
             if self.process is not None:
                 break
+        if self.process is None and last_invalid_handle_error is not None:
+            raise _format_invalid_handle_adb_error(launch_paths, last_invalid_handle_error) from last_invalid_handle_error
         self.events.put(StreamEvent(kind="started"))
         self.worker = threading.Thread(target=self._pump, daemon=True)
         self.worker.start()

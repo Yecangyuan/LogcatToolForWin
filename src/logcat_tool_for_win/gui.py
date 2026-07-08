@@ -1462,8 +1462,6 @@ class LogcatToolGUI:
             messagebox.showerror("停止失败", stop_error)
             self._update_status()
             return
-        self.filters = self._current_filters()
-        self.highlight_rules = self._current_highlight_rules()
         retrying = self.status.stream_state == "reconnecting"
         self.manual_stop = False
         self.status.active_device_serial = device.serial
@@ -1731,8 +1729,6 @@ class LogcatToolGUI:
         self._refresh_visible_entries()
 
     def save_session_state(self) -> None:
-        self.filters = self._current_filters()
-        self.highlight_rules = self._current_highlight_rules()
         recent_target = self.connect_var.get().strip()
         self._remember_connect_target(recent_target)
         self._refresh_connect_choices()

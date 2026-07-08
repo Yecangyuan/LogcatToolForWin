@@ -1293,8 +1293,14 @@ def test_start_stream_uses_unfiltered_capture_command_for_raw_export(monkeypatch
     controller.status.adb_ready = True
 
     controller._current_device = lambda: selected_device
-    controller._current_filters = lambda: ui_filters
-    controller._current_highlight_rules = lambda: []
+    controller.filters = ui_filters
+    controller.highlight_rules = []
+    controller._current_filters = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached filters")
+    )
+    controller._current_highlight_rules = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached highlight rules")
+    )
     controller._stop_active_session = lambda manual: None
     controller._update_status = lambda: None
 
@@ -3508,8 +3514,12 @@ def test_save_session_state_persists_recent_target_history(monkeypatch) -> None:
     controller.highlight_rules = []
     controller.connect_var.set("192.168.1.111:5555")
     controller.recent_targets = ["192.168.1.112:5555"]
-    controller._current_filters = lambda: controller.filters
-    controller._current_highlight_rules = lambda: controller.highlight_rules
+    controller._current_filters = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached filters")
+    )
+    controller._current_highlight_rules = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached highlight rules")
+    )
     controller._update_status = lambda: None
     captured: dict[str, object] = {}
 

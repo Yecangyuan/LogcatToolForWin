@@ -1895,6 +1895,13 @@ class LogcatToolGUI:
     def _handle_stream_runtime_failure(self, message: str) -> bool:
         if not message:
             return False
+        if message.startswith("logcat 进程异常退出，代码："):
+            self.status.stream_state = "failed"
+            self.status.reconnect_attempt = 0
+            self.reconnect_target_serial = ""
+            self.status.last_error = message
+            self._update_status()
+            return True
         if not (
             self._is_adb_launch_failure_message(message)
             or self._is_local_adb_service_failure_message(message)

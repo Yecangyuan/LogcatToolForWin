@@ -577,6 +577,43 @@ def test_poll_stream_offers_adb_recovery_prompt_instead_of_reconnecting_after_st
     assert controller.status.queue_depth == 0
 
 
+def test_poll_stream_does_not_reconnect_after_deterministic_logcat_exit(
+    monkeypatch,
+) -> None:
+    controller = make_controller()
+    controller.status.stream_state = "streaming"
+    controller.status.adb_ready = True
+    controller.status.active_device_serial = "R58M12345"
+    controller.reconnect_target_serial = "R58M12345"
+    controller.session = object()
+    reconnects: list[str] = []
+
+    controller.events.put(StreamEvent(kind="stderr", message="logcat 进程异常退出，代码：3"))
+    controller.events.put(StreamEvent(kind="stopped"))
+    controller._schedule_reconnect = lambda: reconnects.append("reconnect")
+
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: None,
+            askyesno=lambda *args: False,
+        ),
+    )
+
+    gui.LogcatToolGUI._poll_stream(controller)
+
+    assert reconnects == []
+    assert controller.status.adb_ready is True
+    assert controller.status.stream_state == "failed"
+    assert controller.status.reconnect_attempt == 0
+    assert controller.reconnect_target_serial == ""
+    assert controller.session is None
+    assert controller.status.last_error == "logcat 进程异常退出，代码：3"
+    assert controller.status.queue_depth == 0
+
+
 def test_poll_stream_ignores_late_stopped_event_while_already_reconnecting() -> None:
     controller = make_controller()
     controller.status.stream_state = "reconnecting"

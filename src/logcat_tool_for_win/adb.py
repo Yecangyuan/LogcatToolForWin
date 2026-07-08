@@ -40,6 +40,11 @@ DEVICE_IP_DISCOVERY_COMMANDS = (
     (["shell", "ifconfig", "wlan0"], "ipv4"),
     (["shell", "getprop", "dhcp.wlan0.ipaddress"], "ipv4"),
 )
+LOCAL_ADB_SERVICE_FAILURE_PATTERNS = (
+    "cannot connect to daemon at tcp:5037",
+    "adb server didn't ack",
+    "cannot bind listener",
+)
 
 
 class ADBCommandError(RuntimeError):
@@ -347,7 +352,7 @@ def _combine_process_output(stdout: str, stderr: str) -> str:
 def _specific_connect_failure_hint(target: str, message: str) -> str:
     lowered = message.lower()
     host = target.rsplit(":", 1)[0]
-    if "cannot connect to daemon at tcp:5037" in lowered:
+    if is_local_adb_service_failure_message(message):
         return "本机 ADB 服务异常。可先点界面的“重启 ADB”，或手动执行 adb kill-server / adb start-server。"
     if "failed to authenticate" in lowered or "unauthorized" in lowered:
         return (
@@ -391,7 +396,7 @@ def _should_retry_connect_error(target: str, message: str) -> bool:
         or normalized.startswith("无法执行 adb，请检查权限：")
     ):
         return False
-    if "cannot connect to daemon at tcp:5037" in lowered:
+    if is_local_adb_service_failure_message(normalized):
         return False
     if "failed to authenticate" in lowered or "unauthorized" in lowered:
         return False
@@ -458,6 +463,11 @@ def _is_adb_launch_failure_message(message: str) -> bool:
     return normalized.startswith("无法启动 adb：") or normalized.startswith(
         "adb.exe 启动后崩溃退出（0x"
     )
+
+
+def is_local_adb_service_failure_message(message: str) -> bool:
+    normalized = message.strip().lower()
+    return any(pattern in normalized for pattern in LOCAL_ADB_SERVICE_FAILURE_PATTERNS)
 
 
 def run_adb(args: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess[str]:

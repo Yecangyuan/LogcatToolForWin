@@ -1732,6 +1732,61 @@ def test_refresh_devices_offers_to_restart_adb_for_local_service_failures(monkey
     assert controller.status.last_error == prompts[0][1]
 
 
+def test_refresh_devices_offers_to_restart_adb_for_adb_server_ack_failures(monkeypatch) -> None:
+    controller = make_controller()
+    stale_device = make_device("R58M12345")
+    stale_label = gui.device_label(stale_device)
+    prompts: list[tuple[str, str]] = []
+    restart_calls: list[str] = []
+
+    controller.devices = [stale_device]
+    controller.device_var.set(stale_label)
+    controller.device_combo["values"] = [stale_label]
+    controller.status.active_device_serial = stale_device.serial
+    controller.restart_adb = lambda: restart_calls.append("restart")
+
+    def raise_refresh_error() -> list[gui.DeviceInfo]:
+        raise RuntimeError(
+            "* daemon not running; starting now at tcp:5037\n"
+            "ADB server didn't ACK\n"
+            "Full server startup log: C:\\Users\\tester\\AppData\\Local\\Temp\\adb.log\n"
+            "cannot bind listener: Permission denied"
+        )
+
+    monkeypatch.setattr(gui, "list_devices", raise_refresh_error)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            showwarning=lambda *args: None,
+            showerror=lambda *args: (_ for _ in ()).throw(
+                AssertionError("adb daemon startup failures should use the recovery prompt")
+            ),
+            askyesno=lambda title, message: prompts.append((title, message)) or True,
+        ),
+    )
+
+    gui.LogcatToolGUI.refresh_devices(controller)
+
+    assert prompts == [
+        (
+            "ADB 服务异常",
+            "* daemon not running; starting now at tcp:5037\n"
+            "ADB server didn't ACK\n"
+            "Full server startup log: C:\\Users\\tester\\AppData\\Local\\Temp\\adb.log\n"
+            "cannot bind listener: Permission denied\n\n"
+            "可直接点界面里的“重启 ADB”尝试恢复。\n\n"
+            "是否现在重启 ADB？",
+        )
+    ]
+    assert restart_calls == ["restart"]
+    assert controller.devices == [stale_device]
+    assert controller.device_var.get() == stale_label
+    assert controller.status.active_device_serial == stale_device.serial
+    assert controller.status.adb_ready is False
+    assert controller.status.last_error == prompts[0][1]
+
+
 def test_refresh_devices_async_offers_to_restart_adb_for_local_service_failures(
     monkeypatch,
 ) -> None:

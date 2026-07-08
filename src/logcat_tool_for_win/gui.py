@@ -29,6 +29,7 @@ from logcat_tool_for_win.adb import (
     extract_tcp_port,
     get_manual_adb_path,
     get_device_route_ip,
+    is_local_adb_service_failure_message,
     list_devices,
     normalize_tcp_target,
     restart_server,
@@ -1354,7 +1355,7 @@ class LogcatToolGUI:
         normalized = message.strip()
         return (
             "本机 ADB 服务异常" in normalized
-            or "cannot connect to daemon at tcp:5037" in normalized.lower()
+            or is_local_adb_service_failure_message(normalized)
         )
 
     def _remember_connect_target(self, target: str) -> None:

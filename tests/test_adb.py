@@ -822,6 +822,13 @@ def test_connect_device_does_not_retry_adb_launch_failures(
             "cannot connect to daemon at tcp:5037: Connection refused",
             "本机 ADB 服务异常",
         ),
+        (
+            "* daemon not running; starting now at tcp:5037\n"
+            "ADB server didn't ACK\n"
+            "Full server startup log: C:\\Users\\tester\\AppData\\Local\\Temp\\adb.log\n"
+            "cannot bind listener: Permission denied",
+            "本机 ADB 服务异常",
+        ),
     ],
 )
 def test_connect_device_does_not_retry_known_direct_connect_failures(

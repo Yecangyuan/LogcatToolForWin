@@ -2011,11 +2011,14 @@ class LogcatToolGUI:
         self._render_visible()
 
     def _render_visible(self) -> None:
-        rule_map = {rule.name: rule for rule in self.highlight_rules}
-        tag_map = self._build_highlight_tag_map(rule_map)
         self.text.configure(state=tk.NORMAL)
         self.text.delete("1.0", tk.END)
-        self._configure_highlight_tags(rule_map, tag_map, self.visible_lines)
+        if any(entry.highlight_keys for entry in self.visible_lines):
+            rule_map = {rule.name: rule for rule in self.highlight_rules}
+            tag_map = self._build_highlight_tag_map(rule_map)
+            self._configure_highlight_tags(rule_map, tag_map, self.visible_lines)
+        else:
+            tag_map = {}
 
         for entry in self.visible_lines:
             self._insert_visible_entry(entry, tag_map)

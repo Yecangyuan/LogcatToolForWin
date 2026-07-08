@@ -1484,7 +1484,7 @@ class LogcatToolGUI:
             self.events = queue.Queue()
             self.status.queue_depth = 0
             self.session = LogcatSession(
-                build_logcat_command(device.serial, FilterState()),
+                build_logcat_command(device.serial, self.filters),
                 self.events,
             )
             self.session.start()

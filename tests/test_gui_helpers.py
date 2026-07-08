@@ -1531,7 +1531,7 @@ def test_stop_stream_cancels_pending_poll_stream_callback() -> None:
     assert controller._poll_stream_callback_id is None
 
 
-def test_start_stream_uses_unfiltered_capture_command_for_raw_export(monkeypatch) -> None:
+def test_start_stream_uses_cached_ui_filters_for_capture_command(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")
     ui_filters = FilterState(
@@ -1577,8 +1577,9 @@ def test_start_stream_uses_unfiltered_capture_command_for_raw_export(monkeypatch
 
     capture_filters = captured["filter_state"]
     assert isinstance(capture_filters, FilterState)
-    assert capture_filters.minimum_level == "V"
-    assert capture_filters.tag_filters == ()
+    assert capture_filters is ui_filters
+    assert capture_filters.minimum_level == "E"
+    assert capture_filters.tag_filters == ("MyApp",)
     assert controller.filters == ui_filters
 
 

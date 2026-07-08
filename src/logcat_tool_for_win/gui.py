@@ -1725,6 +1725,8 @@ class LogcatToolGUI:
             self.match_only_var.set(preset.filters.match_only)
         finally:
             self._filter_refresh_suspended = False
+        self.filters = self._current_filters()
+        self.highlight_rules = self._current_highlight_rules()
         self._refresh_visible_entries()
 
     def save_session_state(self) -> None:
@@ -1986,11 +1988,9 @@ class LogcatToolGUI:
 
     def _refresh_visible_entries(self) -> None:
         self._invalidate_pending_filter_refreshes()
-        filters = self._current_filters()
+        filters = self.filters
         prepared_filters = prepare_filter_state(filters)
-        rules = self._current_highlight_rules()
-        self.filters = filters
-        self.highlight_rules = rules
+        rules = self.highlight_rules
         self.visible_lines.clear()
         for entry in self.raw_lines:
             entry.matches_filters = entry_matches_prepared(entry, prepared_filters)

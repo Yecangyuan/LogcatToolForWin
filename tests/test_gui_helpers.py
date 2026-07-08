@@ -758,8 +758,8 @@ def test_refresh_visible_entries_skips_highlight_matching_for_hidden_match_only_
     rules = [HighlightRule(name="line", pattern="line", foreground="#fff")]
     calls: list[LogEntry] = []
 
-    controller._current_filters = lambda: filters
-    controller._current_highlight_rules = lambda: rules
+    controller.filters = filters
+    controller.highlight_rules = rules
 
     def match_highlights(entry_arg: LogEntry, rules_arg: list[HighlightRule]) -> tuple[str, ...]:
         calls.append(entry_arg)
@@ -859,8 +859,8 @@ def test_refresh_visible_entries_prepares_keyword_filter_once_for_raw_log_batch(
     keyword = LowerCountingStr("CRASH")
     filters = FilterState(minimum_level="V", keyword=keyword)
 
-    controller._current_filters = lambda: filters
-    controller._current_highlight_rules = lambda: []
+    controller.filters = filters
+    controller.highlight_rules = []
 
     gui.LogcatToolGUI._refresh_visible_entries(controller)
 
@@ -1003,7 +1003,7 @@ def test_highlight_refresh_invalidates_pending_debounced_filter_refresh() -> Non
     controller = make_controller()
     visible_entry = make_entry("visible line")
     controller.visible_lines.extend([visible_entry])
-    controller._current_highlight_rules = lambda: [
+    controller.highlight_rules = [
         HighlightRule(name="line", pattern="line", foreground="#fff")
     ]
     renders: list[str] = []
@@ -1036,6 +1036,27 @@ def test_refresh_highlight_entries_reuses_cached_filters_and_rules() -> None:
 
     gui.LogcatToolGUI._refresh_highlight_entries(controller)
 
+    assert visible_entry.highlight_keys == ("line",)
+    assert controller.filters.minimum_level == "W"
+    assert controller.highlight_rules[0].name == "line"
+
+
+def test_refresh_visible_entries_reuses_cached_filters_and_rules() -> None:
+    controller = make_controller()
+    visible_entry = make_entry("visible line")
+    controller.raw_lines.extend([visible_entry])
+    controller.filters = FilterState(minimum_level="W")
+    controller.highlight_rules = [HighlightRule(name="line", pattern="line", foreground="#fff")]
+    controller._current_filters = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached filters")
+    )
+    controller._current_highlight_rules = lambda: (_ for _ in ()).throw(
+        AssertionError("should reuse cached highlight rules")
+    )
+
+    gui.LogcatToolGUI._refresh_visible_entries(controller)
+
+    assert list(controller.visible_lines) == [visible_entry]
     assert visible_entry.highlight_keys == ("line",)
     assert controller.filters.minimum_level == "W"
     assert controller.highlight_rules[0].name == "line"
@@ -1081,6 +1102,46 @@ def test_load_named_preset_batches_filter_refreshes() -> None:
     assert controller.highlight_var.get() == "ANR, crash"
     assert controller.auto_scroll_var.get() is False
     assert controller.match_only_var.get() is True
+
+
+def test_load_named_preset_updates_cached_filters_and_highlights_before_refresh() -> None:
+    controller = make_controller()
+    controller.named_presets = {
+        "Errors": NamedPreset(
+            filters=FilterState(
+                minimum_level="E",
+                tag_filters=("ActivityManager", "SystemUI"),
+                keyword="crash",
+                auto_scroll=False,
+                match_only=True,
+            ),
+            highlight_patterns=("ANR", "crash"),
+        )
+    }
+    controller.preset_var = DummyVar("Errors")
+    controller.filters = FilterState(minimum_level="V")
+    controller.highlight_rules = []
+    seen: list[tuple[FilterState, tuple[str, ...]]] = []
+
+    def refresh_visible_entries() -> None:
+        seen.append(
+            (
+                controller.filters,
+                tuple(rule.pattern for rule in controller.highlight_rules),
+            )
+        )
+
+    controller._refresh_visible_entries = refresh_visible_entries
+
+    gui.LogcatToolGUI.load_named_preset(controller)
+
+    assert len(seen) == 1
+    assert seen[0][0].minimum_level == "E"
+    assert seen[0][0].tag_filters == ("ActivityManager", "SystemUI")
+    assert seen[0][0].keyword == "crash"
+    assert seen[0][0].auto_scroll is False
+    assert seen[0][0].match_only is True
+    assert seen[0][1] == ("ANR", "crash")
 
 
 def test_poll_stream_full_renders_when_visible_log_cap_rolls_over() -> None:

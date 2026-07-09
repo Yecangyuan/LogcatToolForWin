@@ -5050,10 +5050,12 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
     target_device = make_device("target-serial")
     other_device = make_device("other-serial")
     started_with: list[str] = []
+    status_updates: list[str] = []
     captured: dict[str, object] = {}
     controller.reconnect_target_serial = target_device.serial
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = other_device.serial
+    controller._update_status = lambda: status_updates.append("status")
 
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         captured["message"] = message
@@ -5071,6 +5073,7 @@ def test_retry_stream_uses_preserved_reconnect_target_after_refresh(
 
     assert captured["message"] == "正在重连设备..."
     assert started_with == [gui.device_label(target_device)]
+    assert status_updates == []
 
 
 def test_retry_stream_reconnects_missing_tcp_target_before_failing(
@@ -5252,7 +5255,7 @@ def test_retry_stream_tcp_reconnect_launch_failure_marks_adb_unavailable_and_pro
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == prompts[0][1]
-    assert status_updates == ["status", "status"]
+    assert status_updates == ["status"]
 
 
 def test_retry_stream_tcp_reconnect_local_service_failure_marks_adb_unavailable_and_prompts_restart(

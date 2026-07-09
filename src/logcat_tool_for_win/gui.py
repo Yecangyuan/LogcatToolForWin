@@ -1834,7 +1834,14 @@ class LogcatToolGUI:
     ) -> None:
         if self.manual_stop or self.status.stream_state != "reconnecting":
             return
-        self._apply_devices(devices)
+        should_continue_retry = ":" in target_serial
+        should_restart_stream = any(
+            device.serial == target_serial and device.state == "device" for device in devices
+        )
+        self._apply_devices(
+            devices,
+            update_status=not (should_restart_stream or should_continue_retry),
+        )
         for device in self.devices:
             if device.serial == target_serial and device.state == "device":
                 self.device_var.set(device_label(device))

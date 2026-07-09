@@ -1533,7 +1533,7 @@ class LogcatToolGUI:
         if (
             self.session is None
             and self.status.stream_state == "idle"
-            and self.status.queue_depth == 0
+            and self.events.qsize() == 0
             and getattr(self, "_poll_stream_callback_id", None) is None
         ):
             return

@@ -1581,6 +1581,20 @@ def test_stop_stream_preserves_existing_error_when_already_idle() -> None:
     assert status_updates == []
 
 
+def test_stop_stream_discards_stale_events_even_when_idle_queue_depth_is_outdated() -> None:
+    controller = make_controller()
+    controller.session = None
+    controller.status.stream_state = "idle"
+    controller.status.last_error = "本机 ADB 服务异常。"
+    controller.status.queue_depth = 0
+    controller.events.put(StreamEvent(kind="line", entry=make_entry("late stale line")))
+
+    gui.LogcatToolGUI.stop_stream(controller)
+
+    assert controller.events.empty()
+    assert controller.status.queue_depth == 0
+
+
 def test_start_stream_uses_cached_ui_filters_for_capture_command(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")

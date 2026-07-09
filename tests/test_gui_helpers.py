@@ -3559,6 +3559,7 @@ def test_handle_connect_tcp_error_offers_to_switch_adb_path_for_launch_failures(
     stale_label = gui.device_label(stale_device)
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
+    status_updates: list[str] = []
 
     controller.devices = [stale_device]
     controller.device_var.set(stale_label)
@@ -3566,6 +3567,7 @@ def test_handle_connect_tcp_error_offers_to_switch_adb_path_for_launch_failures(
     controller.status.active_device_serial = stale_device.serial
     controller.status.adb_ready = True
     controller.configure_adb_path = lambda: configure_calls.append("configure")
+    controller._update_status = lambda: status_updates.append("status")
 
     monkeypatch.setattr(
         gui,
@@ -3596,6 +3598,7 @@ def test_handle_connect_tcp_error_offers_to_switch_adb_path_for_launch_failures(
     ]
     assert configure_calls == ["configure"]
     assert controller.status.adb_ready is False
+    assert status_updates == ["status"]
     assert controller.devices == [stale_device]
     assert controller.device_var.get() == stale_label
     assert controller.status.active_device_serial == stale_device.serial
@@ -3735,7 +3738,7 @@ def test_start_stream_offers_to_switch_adb_path_for_launch_failures(monkeypatch)
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == prompts[0][1]
-    assert status_updates == ["status", "status"]
+    assert status_updates == ["status"]
 
 
 def test_start_stream_offers_to_switch_adb_path_when_adb_is_missing(monkeypatch) -> None:
@@ -5178,6 +5181,7 @@ def test_retry_stream_tcp_reconnect_launch_failure_marks_adb_unavailable_and_pro
     background_calls: list[dict[str, object]] = []
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
+    status_updates: list[str] = []
 
     controller.devices = [other_device]
     controller.status.adb_ready = True
@@ -5185,6 +5189,7 @@ def test_retry_stream_tcp_reconnect_launch_failure_marks_adb_unavailable_and_pro
     controller.status.stream_state = "reconnecting"
     controller.status.active_device_serial = target_serial
     controller.configure_adb_path = lambda: configure_calls.append("configure")
+    controller._update_status = lambda: status_updates.append("status")
 
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         background_calls.append(
@@ -5247,6 +5252,7 @@ def test_retry_stream_tcp_reconnect_launch_failure_marks_adb_unavailable_and_pro
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == prompts[0][1]
+    assert status_updates == ["status", "status"]
 
 
 def test_retry_stream_tcp_reconnect_local_service_failure_marks_adb_unavailable_and_prompts_restart(
@@ -5449,6 +5455,7 @@ def test_retry_stream_refresh_local_service_failure_prompts_restart_instead_of_r
     background_calls: list[dict[str, object]] = []
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
+    status_updates: list[str] = []
 
     controller.devices = [stale_device]
     controller.device_var.set(gui.device_label(stale_device))
@@ -5458,6 +5465,7 @@ def test_retry_stream_refresh_local_service_failure_prompts_restart_instead_of_r
     controller.status.active_device_serial = target_serial
     controller.status.reconnect_attempt = 1
     controller.restart_adb = lambda: restart_calls.append("restart")
+    controller._update_status = lambda: status_updates.append("status")
 
     def fake_run_background_task(message, action, on_success, on_error, task_key=None) -> None:
         background_calls.append(
@@ -5505,6 +5513,7 @@ def test_retry_stream_refresh_local_service_failure_prompts_restart_instead_of_r
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == prompts[0][1]
+    assert status_updates == ["status"]
 
 
 def test_retry_stream_preserves_refresh_failure_reason() -> None:

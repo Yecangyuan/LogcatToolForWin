@@ -808,7 +808,7 @@ class LogcatToolGUI:
         if update_status:
             self._update_status()
 
-    def _handle_refresh_devices_error(self, exc: Exception) -> None:
+    def _handle_refresh_devices_error(self, exc: Exception, *, update_status: bool = True) -> None:
         self.status.adb_path = str(resolve_adb_path())
         preserve_stream_target = self.status.stream_state in {"streaming", "reconnecting"}
         if preserve_stream_target:
@@ -835,7 +835,8 @@ class LogcatToolGUI:
                     self.status.active_device_serial = self.devices[0].serial
             else:
                 self.status.active_device_serial = ""
-        self._update_status()
+        if update_status:
+            self._update_status()
 
     def refresh_devices(self) -> None:
         try:
@@ -855,8 +856,14 @@ class LogcatToolGUI:
         )
 
     def _handle_user_refresh_devices_error(self, exc: Exception) -> None:
-        self._handle_refresh_devices_error(exc)
         message = str(exc)
+        if self._is_adb_launch_failure_message(message) or self._is_local_adb_service_failure_message(message):
+            self._handle_refresh_devices_error(exc, update_status=False)
+            if self._show_adb_launch_recovery_prompt(message):
+                return
+            self._show_local_adb_service_recovery_prompt(message)
+            return
+        self._handle_refresh_devices_error(exc)
         if self._show_adb_launch_recovery_prompt(message):
             return
         self._show_local_adb_service_recovery_prompt(message)
@@ -977,7 +984,7 @@ class LogcatToolGUI:
     def _handle_connect_tcp_error(self, exc: Exception) -> None:
         message = self._format_connect_tcp_error_message(exc)
         if self._is_adb_launch_failure_message(message) or self._is_local_adb_service_failure_message(message):
-            self._handle_refresh_devices_error(exc)
+            self._handle_refresh_devices_error(exc, update_status=False)
         if self._show_adb_launch_recovery_prompt(message):
             return
         if self._show_local_adb_service_recovery_prompt(message):
@@ -1103,7 +1110,7 @@ class LogcatToolGUI:
     def _handle_wireless_adb_error(self, exc: Exception) -> None:
         raw_message = str(exc).strip() or "开启无线 ADB 失败。"
         if self._is_adb_launch_failure_message(raw_message) or self._is_local_adb_service_failure_message(raw_message):
-            self._handle_refresh_devices_error(exc)
+            self._handle_refresh_devices_error(exc, update_status=False)
         if self._show_adb_launch_recovery_prompt(raw_message):
             return
         if self._show_local_adb_service_recovery_prompt(raw_message):
@@ -1497,7 +1504,7 @@ class LogcatToolGUI:
             self.reconnect_target_serial = ""
             message = str(exc)
             if self._is_adb_launch_failure_message(message) or self._is_local_adb_service_failure_message(message):
-                self._handle_refresh_devices_error(exc)
+                self._handle_refresh_devices_error(exc, update_status=False)
                 self.status.stream_state = "failed"
                 self.status.reconnect_attempt = 0
                 self.reconnect_target_serial = ""
@@ -1567,11 +1574,11 @@ class LogcatToolGUI:
     def _handle_clear_logcat_error(self, exc: Exception) -> None:
         message = str(exc)
         if self._is_adb_launch_failure_message(message):
-            self._handle_refresh_devices_error(exc)
+            self._handle_refresh_devices_error(exc, update_status=False)
             self._show_adb_launch_recovery_prompt(message)
             return
         if self._is_local_adb_service_failure_message(message):
-            self._handle_refresh_devices_error(exc)
+            self._handle_refresh_devices_error(exc, update_status=False)
             self._show_local_adb_service_recovery_prompt(message)
             return
         messagebox.showerror("清空失败", message)
@@ -1612,15 +1619,15 @@ class LogcatToolGUI:
     def _handle_restart_adb_error(self, exc: Exception) -> None:
         message = str(exc)
         if self._is_adb_launch_failure_message(message):
-            self._handle_refresh_devices_error(exc)
+            self._handle_refresh_devices_error(exc, update_status=False)
             self._show_adb_launch_recovery_prompt(message)
             return
         if self._is_local_adb_service_failure_message(message):
-            self._handle_refresh_devices_error(exc)
+            self._handle_refresh_devices_error(exc, update_status=False)
             self._show_local_adb_service_recovery_prompt(message)
             return
         messagebox.showerror("ADB 重启失败", message)
-        self._handle_refresh_devices_error(exc)
+        self._handle_refresh_devices_error(exc, update_status=False)
         self.status.last_error = message
         self._update_status()
 
@@ -1689,7 +1696,7 @@ class LogcatToolGUI:
     def _handle_configure_adb_path_error(self, exc: Exception) -> None:
         self.status.adb_path = str(resolve_adb_path())
         message = str(exc)
-        self._handle_refresh_devices_error(exc)
+        self._handle_refresh_devices_error(exc, update_status=False)
         self.status.adb_path = str(resolve_adb_path())
         if self._show_adb_launch_recovery_prompt(message):
             return
@@ -1851,8 +1858,11 @@ class LogcatToolGUI:
         ):
             self._retry_tcp_stream_target(target_serial)
             return
-        self._handle_refresh_devices_error(exc)
-        self._fail_retry_stream(message.strip())
+        should_offer_recovery = self._is_adb_launch_failure_message(message) or self._is_local_adb_service_failure_message(
+            message
+        )
+        self._handle_refresh_devices_error(exc, update_status=False)
+        self._fail_retry_stream(message.strip(), update_status=not should_offer_recovery)
         if self._show_adb_launch_recovery_prompt(message):
             return
         self._show_local_adb_service_recovery_prompt(message)
@@ -1881,20 +1891,20 @@ class LogcatToolGUI:
             return
         message = str(exc).strip()
         if self._is_adb_launch_failure_message(message):
-            self._handle_refresh_devices_error(exc)
-            self._fail_retry_stream(message)
+            self._handle_refresh_devices_error(exc, update_status=False)
+            self._fail_retry_stream(message, update_status=False)
             self._show_adb_launch_recovery_prompt(message)
             return
         if self._is_local_adb_service_failure_message(message):
-            self._handle_refresh_devices_error(exc)
-            self._fail_retry_stream(message)
+            self._handle_refresh_devices_error(exc, update_status=False)
+            self._fail_retry_stream(message, update_status=False)
             self._show_local_adb_service_recovery_prompt(message)
             return
         if not message:
             message = "TCP 重连失败。"
         self._fail_retry_stream(message)
 
-    def _fail_retry_stream(self, refresh_error: str = "") -> None:
+    def _fail_retry_stream(self, refresh_error: str = "", *, update_status: bool = True) -> None:
         self.status.stream_state = "failed"
         self.status.reconnect_attempt = 0
         self.reconnect_target_serial = ""
@@ -1902,7 +1912,8 @@ class LogcatToolGUI:
             self.status.last_error = f"重连设备不可用：{refresh_error}"
         else:
             self.status.last_error = "重连设备不可用。"
-        self._update_status()
+        if update_status:
+            self._update_status()
 
     def _handle_stream_runtime_failure(self, message: str) -> bool:
         if not message:
@@ -1919,7 +1930,7 @@ class LogcatToolGUI:
             or self._is_local_adb_service_failure_message(message)
         ):
             return False
-        self._handle_refresh_devices_error(RuntimeError(message))
+        self._handle_refresh_devices_error(RuntimeError(message), update_status=False)
         self.status.stream_state = "failed"
         self.status.reconnect_attempt = 0
         self.reconnect_target_serial = ""

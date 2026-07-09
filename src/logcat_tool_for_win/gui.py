@@ -1591,7 +1591,7 @@ class LogcatToolGUI:
         self.status.last_error = message
         self._update_status()
 
-    def _prepare_stream_recovery_action(self) -> None:
+    def _prepare_stream_recovery_action(self, *, defer_status_to_pending: bool = False) -> None:
         stop_error = self._stop_active_session(manual=True)
         self._cancel_poll_stream_callback()
         self.session = None
@@ -1601,10 +1601,11 @@ class LogcatToolGUI:
         self.reconnect_target_serial = ""
         self.status.queue_depth = 0
         self.status.last_error = stop_error or ""
-        self._update_status()
+        if stop_error or not defer_status_to_pending:
+            self._update_status()
 
     def restart_adb(self) -> None:
-        self._prepare_stream_recovery_action()
+        self._prepare_stream_recovery_action(defer_status_to_pending=True)
         self._run_background_task(
             "正在重启 ADB...",
             self._restart_adb_and_list_devices,
@@ -1667,7 +1668,7 @@ class LogcatToolGUI:
             selected_path = Path(selected)
             success_message_prefix = "已切换 ADB："
 
-        self._prepare_stream_recovery_action()
+        self._prepare_stream_recovery_action(defer_status_to_pending=True)
 
         previous_manual_path = get_manual_adb_path()
 

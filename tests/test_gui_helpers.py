@@ -545,11 +545,13 @@ def test_poll_stream_offers_adb_recovery_prompt_instead_of_reconnecting_after_st
     prompts: list[tuple[str, str]] = []
     configure_calls: list[str] = []
     reconnects: list[str] = []
+    status_updates: list[str] = []
 
     controller.events.put(StreamEvent(kind="stderr", message="adb.exe 启动后崩溃退出（0xC0000005）"))
     controller.events.put(StreamEvent(kind="stopped"))
     controller.configure_adb_path = lambda: configure_calls.append("configure")
     controller._schedule_reconnect = lambda: reconnects.append("reconnect")
+    controller._update_status = lambda: status_updates.append("status")
 
     monkeypatch.setattr(
         gui,
@@ -582,6 +584,7 @@ def test_poll_stream_offers_adb_recovery_prompt_instead_of_reconnecting_after_st
     assert controller.session is None
     assert controller.status.last_error == prompts[0][1]
     assert controller.status.queue_depth == 0
+    assert status_updates == ["status"]
 
 
 def test_poll_stream_does_not_reconnect_after_deterministic_logcat_exit(
@@ -4554,6 +4557,22 @@ def test_restart_adb_schedules_restart_and_refresh(monkeypatch) -> None:
     assert controller.status.last_error == ""
 
 
+def test_restart_adb_skips_blank_intermediate_status_before_pending_message(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("R58M12345")
+    status_updates: list[str] = []
+
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(gui, "restart_server", lambda: None)
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    controller._update_status = lambda: status_updates.append(controller.status.last_error)
+
+    gui.LogcatToolGUI.restart_adb(controller)
+
+    assert len(controller.root.after_calls) == 1
+    assert status_updates == ["正在重启 ADB..."]
+
+
 def test_configure_adb_path_switches_to_selected_exe_and_refreshes_devices(monkeypatch) -> None:
     controller = make_controller()
     device = make_device("R58M12345")
@@ -4652,6 +4671,41 @@ def test_configure_adb_path_resets_to_auto_detection(monkeypatch) -> None:
     assert calls == [("set", None), ("set", previous_manual_path), ("set", None)]
     assert controller.devices == [device]
     assert controller.status.last_error == f"已恢复自动检测 ADB：{auto_path}"
+
+
+def test_configure_adb_path_skips_blank_intermediate_status_before_pending_message(monkeypatch) -> None:
+    controller = make_controller()
+    device = make_device("R58M12345")
+    selected_path = "C:/Android/platform-tools/adb.exe"
+    status_updates: list[str] = []
+
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(
+        gui,
+        "messagebox",
+        SimpleNamespace(
+            askyesnocancel=lambda title, message: True,
+            showwarning=lambda *args: None,
+            showerror=lambda *args: None,
+        ),
+    )
+    monkeypatch.setattr(
+        gui,
+        "filedialog",
+        SimpleNamespace(
+            askopenfilename=lambda **kwargs: selected_path,
+        ),
+    )
+    monkeypatch.setattr(gui, "get_manual_adb_path", lambda: None)
+    monkeypatch.setattr(gui, "set_manual_adb_path", lambda path: None)
+    monkeypatch.setattr(gui, "resolve_adb_path", lambda: Path(selected_path))
+    monkeypatch.setattr(gui, "list_devices", lambda: [device])
+    controller._update_status = lambda: status_updates.append(controller.status.last_error)
+
+    gui.LogcatToolGUI.configure_adb_path(controller)
+
+    assert len(controller.root.after_calls) == 1
+    assert status_updates == ["正在切换 ADB..."]
 
 
 def test_configure_adb_path_reverts_temporary_path_when_result_becomes_stale(monkeypatch) -> None:

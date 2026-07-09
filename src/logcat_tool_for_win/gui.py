@@ -1530,6 +1530,13 @@ class LogcatToolGUI:
         self._update_status()
 
     def stop_stream(self) -> None:
+        if (
+            self.session is None
+            and self.status.stream_state == "idle"
+            and self.status.queue_depth == 0
+            and getattr(self, "_poll_stream_callback_id", None) is None
+        ):
+            return
         stop_error = self._stop_active_session(manual=True)
         self._cancel_poll_stream_callback()
         if stop_error:

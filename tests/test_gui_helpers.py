@@ -1563,6 +1563,24 @@ def test_stop_stream_cancels_pending_poll_stream_callback() -> None:
     assert controller._poll_stream_callback_id is None
 
 
+def test_stop_stream_preserves_existing_error_when_already_idle() -> None:
+    controller = make_controller()
+    controller.session = None
+    controller.status.stream_state = "idle"
+    controller.status.last_error = "本机 ADB 服务异常。"
+    controller.status.queue_depth = 0
+    status_updates: list[str] = []
+
+    controller._update_status = lambda: status_updates.append("status")
+
+    gui.LogcatToolGUI.stop_stream(controller)
+
+    assert controller.status.stream_state == "idle"
+    assert controller.status.last_error == "本机 ADB 服务异常。"
+    assert controller.status.queue_depth == 0
+    assert status_updates == []
+
+
 def test_start_stream_uses_cached_ui_filters_for_capture_command(monkeypatch) -> None:
     controller = make_controller()
     selected_device = make_device("R58M12345")

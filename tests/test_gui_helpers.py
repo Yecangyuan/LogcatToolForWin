@@ -1754,6 +1754,7 @@ def test_start_stream_reconnect_offers_to_restart_adb_when_local_service_failure
     selected_device = make_device("R58M12345")
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
+    status_updates: list[str] = []
 
     controller.status.adb_ready = False
     controller.status.stream_state = "reconnecting"
@@ -1768,6 +1769,7 @@ def test_start_stream_reconnect_offers_to_restart_adb_when_local_service_failure
     controller.restart_adb = lambda: restart_calls.append("restart")
     controller._current_device = lambda: selected_device
     controller._stop_active_session = lambda manual: None
+    controller._update_status = lambda: status_updates.append("status")
 
     monkeypatch.setattr(
         gui,
@@ -1796,6 +1798,7 @@ def test_start_stream_reconnect_offers_to_restart_adb_when_local_service_failure
     assert controller.status.reconnect_attempt == 0
     assert controller.reconnect_target_serial == ""
     assert controller.status.last_error == prompts[0][1]
+    assert status_updates == ["status"]
 
 
 def test_start_stream_fails_reconnect_when_current_device_is_missing(monkeypatch) -> None:

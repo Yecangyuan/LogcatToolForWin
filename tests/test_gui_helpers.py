@@ -1708,6 +1708,7 @@ def test_start_stream_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_s
     selected_device = make_device("R58M12345")
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
+    status_updates: list[str] = []
 
     controller.status.adb_ready = False
     controller.status.last_error = (
@@ -1720,6 +1721,7 @@ def test_start_stream_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_s
     controller._stop_active_session = lambda manual: (_ for _ in ()).throw(
         AssertionError("should not stop session while adb is unavailable")
     )
+    controller._update_status = lambda: status_updates.append("status")
 
     monkeypatch.setattr(
         gui,
@@ -1746,6 +1748,7 @@ def test_start_stream_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_s
     assert restart_calls == ["restart"]
     assert controller.status.stream_state == "idle"
     assert controller.status.last_error == prompts[0][1]
+    assert status_updates == []
 
 
 def test_start_stream_fails_reconnect_when_adb_is_not_ready(monkeypatch) -> None:
@@ -4382,6 +4385,7 @@ def test_clear_device_logcat_offers_to_restart_adb_when_adb_is_not_ready_due_to_
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
     background_calls: list[str] = []
+    status_updates: list[str] = []
 
     controller.status.adb_ready = False
     controller.status.last_error = (
@@ -4392,6 +4396,7 @@ def test_clear_device_logcat_offers_to_restart_adb_when_adb_is_not_ready_due_to_
     controller.restart_adb = lambda: restart_calls.append("restart")
     controller._current_device = lambda: selected_device
     controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+    controller._update_status = lambda: status_updates.append("status")
 
     monkeypatch.setattr(
         gui,
@@ -4418,6 +4423,7 @@ def test_clear_device_logcat_offers_to_restart_adb_when_adb_is_not_ready_due_to_
     assert restart_calls == ["restart"]
     assert background_calls == []
     assert controller.status.last_error == prompts[0][1]
+    assert status_updates == []
 
 
 def test_clear_device_logcat_ignores_stale_failure_from_earlier_request(monkeypatch) -> None:
@@ -6203,6 +6209,7 @@ def test_enable_wireless_adb_offers_to_restart_adb_when_adb_is_not_ready_due_to_
     prompts: list[tuple[str, str]] = []
     restart_calls: list[str] = []
     background_calls: list[str] = []
+    status_updates: list[str] = []
 
     controller.status.adb_ready = False
     controller.status.last_error = (
@@ -6213,6 +6220,7 @@ def test_enable_wireless_adb_offers_to_restart_adb_when_adb_is_not_ready_due_to_
     controller.restart_adb = lambda: restart_calls.append("restart")
     controller._current_device = lambda: selected_device
     controller._run_background_task = lambda *args, **kwargs: background_calls.append("background")
+    controller._update_status = lambda: status_updates.append("status")
 
     monkeypatch.setattr(
         gui,
@@ -6239,6 +6247,7 @@ def test_enable_wireless_adb_offers_to_restart_adb_when_adb_is_not_ready_due_to_
     assert restart_calls == ["restart"]
     assert background_calls == []
     assert controller.status.last_error == prompts[0][1]
+    assert status_updates == []
 
 
 def test_enable_wireless_adb_keeps_connected_target_when_device_refresh_fails(monkeypatch) -> None:

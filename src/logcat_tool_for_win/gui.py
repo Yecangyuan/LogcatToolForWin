@@ -994,7 +994,7 @@ class LogcatToolGUI:
         self.status.last_error = message
         self._update_status()
 
-    def _show_cached_adb_recovery_prompt(self, message: str = "") -> bool:
+    def _show_cached_adb_recovery_prompt(self, message: str = "", *, update_status: bool = True) -> bool:
         if message:
             message = message.strip()
         else:
@@ -1002,13 +1002,13 @@ class LogcatToolGUI:
         if not message:
             return False
         recovery_message = message.split("\n\n", 1)[0].strip()
-        if self._show_adb_launch_recovery_prompt(recovery_message):
+        if self._show_adb_launch_recovery_prompt(recovery_message, update_status=update_status):
             return True
-        return self._show_local_adb_service_recovery_prompt(recovery_message)
+        return self._show_local_adb_service_recovery_prompt(recovery_message, update_status=update_status)
 
     def enable_wireless_adb(self) -> None:
         if not self.status.adb_ready:
-            if self._show_cached_adb_recovery_prompt():
+            if self._show_cached_adb_recovery_prompt(update_status=False):
                 return
             messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
             return
@@ -1347,7 +1347,7 @@ class LogcatToolGUI:
             "请确认当前选择的是已授权 USB 调试的设备，并保持数据线连接稳定后再试。"
         )
 
-    def _show_adb_launch_recovery_prompt(self, message: str) -> bool:
+    def _show_adb_launch_recovery_prompt(self, message: str, *, update_status: bool = True) -> bool:
         if not self._is_adb_launch_failure_message(message):
             return False
         prompt = (
@@ -1359,12 +1359,13 @@ class LogcatToolGUI:
         )
         should_configure = messagebox.askyesno("ADB 无法启动", prompt)
         self.status.last_error = prompt
-        self._update_status()
+        if update_status:
+            self._update_status()
         if should_configure:
             self.configure_adb_path()
         return True
 
-    def _show_local_adb_service_recovery_prompt(self, message: str) -> bool:
+    def _show_local_adb_service_recovery_prompt(self, message: str, *, update_status: bool = True) -> bool:
         if not self._is_local_adb_service_failure_message(message):
             return False
         prompt = (
@@ -1374,7 +1375,8 @@ class LogcatToolGUI:
         )
         should_restart = messagebox.askyesno("ADB 服务异常", prompt)
         self.status.last_error = prompt
-        self._update_status()
+        if update_status:
+            self._update_status()
         if should_restart:
             self.restart_adb()
         return True
@@ -1444,15 +1446,19 @@ class LogcatToolGUI:
     def start_stream(self) -> None:
         if not self.status.adb_ready:
             cached_error = self.status.last_error
+            was_reconnecting = self.status.stream_state == "reconnecting"
             should_offer_cached_recovery = self._is_adb_launch_failure_message(
                 cached_error
             ) or self._is_local_adb_service_failure_message(cached_error)
-            if self.status.stream_state == "reconnecting":
+            if was_reconnecting:
                 self._fail_retry_stream(
                     "ADB 不可用。",
                     update_status=not should_offer_cached_recovery,
                 )
-            if self._show_cached_adb_recovery_prompt(cached_error):
+            if self._show_cached_adb_recovery_prompt(
+                cached_error,
+                update_status=was_reconnecting,
+            ):
                 return
             messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
             return
@@ -1555,7 +1561,7 @@ class LogcatToolGUI:
 
     def clear_device_logcat(self) -> None:
         if not self.status.adb_ready:
-            if self._show_cached_adb_recovery_prompt():
+            if self._show_cached_adb_recovery_prompt(update_status=False):
                 return
             messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
             return

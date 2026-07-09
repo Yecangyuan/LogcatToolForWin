@@ -598,8 +598,9 @@ class LogcatToolGUI:
         on_error: Callable[[Exception], None],
         task_key: Optional[str] = None,
     ) -> None:
-        self.status.last_error = pending_message
-        self._update_status()
+        if self.status.last_error != pending_message:
+            self.status.last_error = pending_message
+            self._update_status()
         task_version = self._advance_background_task_version(task_key)
 
         def worker() -> None:

@@ -341,6 +341,35 @@ def test_run_background_task_ignores_ui_schedule_failure_after_close(monkeypatch
     assert errors == []
 
 
+def test_run_background_task_skips_redundant_pending_status_refresh(monkeypatch) -> None:
+    controller = make_controller()
+    controller.status.last_error = "正在执行..."
+    status_updates: list[str] = []
+    successes: list[str] = []
+    errors: list[Exception] = []
+
+    controller._update_status = lambda: status_updates.append("status")
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+
+    gui.LogcatToolGUI._run_background_task(
+        controller,
+        "正在执行...",
+        lambda: "ok",
+        successes.append,
+        errors.append,
+    )
+
+    assert controller.status.last_error == "正在执行..."
+    assert status_updates == []
+    assert len(controller.root.after_calls) == 1
+
+    _delay, callback = controller.root.after_calls[0]
+    callback()
+
+    assert successes == ["ok"]
+    assert errors == []
+
+
 def test_run_background_task_ignores_stale_result_for_same_task_key(monkeypatch) -> None:
     controller = make_controller()
     successes: list[str] = []

@@ -1010,7 +1010,10 @@ class LogcatToolGUI:
         if not self.status.adb_ready:
             if self._show_cached_adb_recovery_prompt(update_status=False):
                 return
-            messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
+            message = "当前 ADB 不可用，请先刷新设备或重启 ADB。"
+            messagebox.showwarning("ADB 不可用", message)
+            self.status.last_error = message
+            self._update_status()
             return
 
         try:
@@ -1460,7 +1463,11 @@ class LogcatToolGUI:
                 update_status=was_reconnecting,
             ):
                 return
-            messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
+            message = "当前 ADB 不可用，请先刷新设备或重启 ADB。"
+            messagebox.showwarning("ADB 不可用", message)
+            if not was_reconnecting:
+                self.status.last_error = message
+                self._update_status()
             return
 
         try:
@@ -1570,7 +1577,10 @@ class LogcatToolGUI:
         if not self.status.adb_ready:
             if self._show_cached_adb_recovery_prompt(update_status=False):
                 return
-            messagebox.showwarning("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")
+            message = "当前 ADB 不可用，请先刷新设备或重启 ADB。"
+            messagebox.showwarning("ADB 不可用", message)
+            self.status.last_error = message
+            self._update_status()
             return
 
         try:

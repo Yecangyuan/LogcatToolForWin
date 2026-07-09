@@ -1731,6 +1731,7 @@ def test_start_stream_warns_when_adb_is_not_ready(monkeypatch) -> None:
     assert warnings == [("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")]
     assert stop_calls == []
     assert controller.status.stream_state == "idle"
+    assert controller.status.last_error == "当前 ADB 不可用，请先刷新设备或重启 ADB。"
 
 
 def test_start_stream_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_service_failure(
@@ -4407,6 +4408,7 @@ def test_clear_device_logcat_warns_when_adb_is_not_ready(monkeypatch) -> None:
 
     assert warnings == [("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")]
     assert background_calls == []
+    assert controller.status.last_error == "当前 ADB 不可用，请先刷新设备或重启 ADB。"
 
 
 def test_clear_device_logcat_offers_to_restart_adb_when_adb_is_not_ready_due_to_local_service_failure(
@@ -6176,6 +6178,7 @@ def test_enable_wireless_adb_warns_when_adb_is_not_ready(monkeypatch) -> None:
 
     assert warnings == [("ADB 不可用", "当前 ADB 不可用，请先刷新设备或重启 ADB。")]
     assert background_calls == []
+    assert controller.status.last_error == "当前 ADB 不可用，请先刷新设备或重启 ADB。"
 
 
 def test_enable_wireless_adb_warns_when_selected_device_is_not_usb_even_if_offline(monkeypatch) -> None:
